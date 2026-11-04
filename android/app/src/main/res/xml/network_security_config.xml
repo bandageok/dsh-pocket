@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  明文 HTTP 是**有意**的，而且是全局放开。
+
+  dsh-pocket 的模型是「手机直接打开电脑上的网页」，鉴权靠配对令牌；加密靠隧道
+  （Tailscale / 自建中继），而不是靠给局域网服务塞一张自签证书 —— 后者在 Android 上
+  要么被系统拒、要么逼用户点「继续」，反而训练用户忽略警告。
+
+  为什么不能只对私网段放开：Android 的 network security config 只认域名与**完整 IP**
+  （<domain>10.0.0.5</domain>），不支持 CIDR。用户填的是任意 IP，所以只能全局放开。
+  README 与 docs/SECURITY.md 里有对应的风险说明：**不要在公共 WiFi 上长期开着**。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

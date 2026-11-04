@@ -1,0 +1,24 @@
+# 忽略规则
+node_modules/
+*.log
+*.tmp
+.DS_Store
+
+# 状态文件（含配对密钥，绝不入库）
+pocket.json
+pocket-code.txt
+.pocket/
+
+# 测试/调试产物
+coverage/
+test/fixtures/out/
+# Android 本地配置（含本机 SDK 路径，不入库）
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/.idea/
+android/*.jks
+android/*.keystore
+android/app/libs/*.aar
+dist/*.apk

@@ -1,0 +1,129 @@
+# 故障排查
+
+按症状查。每条都写「怎么确认」而不是「大概是什么」。
+
+## 手机上打不开 `http://<IP>:3081/__pocket__/`
+
+1. **确认端口真的在监听**
+   ```sh
+   # 电脑上
+   curl -s http://127.0.0.1:3081/__pocket__/health
+   ```
+   连本机都不通 → 插件没起来。看 `dsh web` 的终端输出里有没有 `dsh-pocket` 那几行。
+   常见原因：`--dump-config` / headless 场景没有 `webServer`，插件会打印「拿不到 dsh web 端口」并退出。
+
+2. **确认手机和电脑在同一网段**
+   手机浏览器打开 `http://<IP>:3081/__pocket__/health` 应看到 JSON。
+   不通就是网络层：Windows 防火墙、AP 隔离（很多公司/酒店 WiFi 默认开）、VPN 抢占路由。
+
+3. **确认绑定地址**
+   `bind: 127.0.0.1` 时只有本机能连 —— 这是**故意的**保守配置，别为此改成 `0.0.0.0` 了事，先确认你是要走隧道还是中继。
+
+## 打开了，但一直 401
+
+```
+dsh-pocket: unauthorized — pair this device first
+```
+
+- 令牌被清过（换浏览器、清缓存、隐私模式）→ 回连接屏重新配对。
+- `pocket.json` 被删/换过（secret 变了）→ 所有旧令牌立刻失效，这是设计行为。
+- 反过来：想主动踢光所有设备，就是删 `pocket.json`。
+
+如果 401 的响应体是 **`dsh web authentication required`**（不是我们那句），说明请求绕过了反代直达上游 ——
+检查你填的地址是不是 `:3080`（那是 dsh 自己的口，不是插件的）。
+
+## 能打开界面，但发消息没反应 / 一直转圈
+
+这是 **polyfill 缺失**的经典症状。确认：
+
+```sh
+curl -s -H 'accept: text/html' http://127.0.0.1:3081/ | grep -c data-dsh-pocket
+```
+
+返回 `0` 说明注入没生效。可能原因：
+
+- 请求没走反代（见上一条）。
+- 上游改了首页结构（`<head>` 变了）。`injectPolyfill()` 会退化为插到最前面，仍应注入成功；真没注入就看 `proxy: html decode failed` 日志 —— 说明上游用了我们不认识的 `content-encoding`。
+
+## 实时状态不刷新 / 审批不弹
+
+1. **看状态条颜色**：绿 = SSE 在线，黄 = 轮询降级，红 = 断线。
+2. 黄是**正常**的（中继模式没有 SSE）。直连模式下变黄，说明 SSE 连续失败 3 次，客户端会每分钟尝试回绿。
+3. SSE 本身被中间设备掐断（某些代理会缓冲流）：反代已经设了 `x-accel-buffering: no`，但如果你前面还有一层 Nginx，需要 `proxy_buffering off;`。
+4. 审批只有 **45 秒展示窗**（`observe` 模式下桌面答完后插件并不知道），消失不代表出错。
+
+## 发指令返回 409 / 502
+
+| 返回 | 含义 | 处理 |
+|---|---|---|
+| `409 agent-busy` | 用了 `steer` 但当前没有可插入的回合 | 改用「排队发送」 |
+| `502 session/not-found` | 会话已删 | 刷新列表 |
+| `502 session/model-unavailable` | 上游没配模型/凭据 | 在电脑上先跑通一次 |
+| `502 upstream` + `launch token unavailable` | `ctx.connection.authenticatedUrl` 取不到 token | dsh 版本太老（< 0.1.2）或连接层换了 API |
+
+## 中继连不上
+
+```
+relay: register failed (403)   → 房间号已被别的 secret 占用，换一个
+relay: disconnected, retry…    → 中继没起来 / wss 证书不对 / 房间号写错
+手机：host 离线              → 桌面插件的 relay 没连上（看插件日志），或房间号不一致
+```
+
+自检：
+
+```sh
+curl -s https://<relay>/relay/health          # {"ok":true,"rooms":1,"hosts":1}
+```
+
+`hosts: 0` 表示电脑没连上来 —— 检查插件日志里的 `relay:` 行。
+
+## 端到端检查（用来分辨「谁坏了」）
+
+```sh
+# 1. 上游活着吗
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3080/          # 401 = 活着（栅栏）
+
+# 2. 反代活着吗
+curl -s http://127.0.0.1:3081/__pocket__/health
+
+# 3. 上游 RPC 通吗（要令牌）
+curl -s -H "Authorization: Bearer <token>" \
+     "http://127.0.0.1:3081/__pocket__/api/state?force=1" | head -c 300
+
+# 4. 隔离跑一份（完全不碰现有 profile）
+cd plugin && node tools/standalone.mjs --dsh-port 3080 --token <launch token>
+```
+
+`--token` 从 `dsh web` 启动日志的 `http://127.0.0.1:3080/?token=…` 里抄。
+
+## 插件装完 `dsh web` 起不来
+
+最常见的是**同一个插件被挂两次**（`cordis.patch.yml` 里重复了，或市场安装与手工安装叠加）。
+症状是启动即失败、报 locale/服务重复注册。
+
+```sh
+dsh plugin --profile web remove dsh-pocket
+# 检查 profile 的 cordis.patch.yml 里 dsh-pocket 只出现一次，再重新 add
+```
+
+## 端口被占
+
+插件默认 `3081`，被占会自动往后试 10 个（启动日志打印实际端口）。
+也可以显式改：
+
+```yaml
+- id: dsh-pocket
+  config:
+    port: 3181
+```
+
+## 需要更多日志
+
+插件用 `console` 打日志（和 `dsh web` 自己一致），所以重启时把输出留下来即可：
+
+```sh
+dsh --profile web --no-open 2>&1 | tee /tmp/dsh-web.log
+```
+
+日志里有意**不含**令牌全文（`upstream.mjs` 只打印 cookie 前 16 字节），贴 issue 时不用二次脱敏 ——
+但地址、房间号请自己糊掉。

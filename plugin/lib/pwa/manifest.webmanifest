@@ -1,0 +1,28 @@
+{
+  "name": "DSH Pocket",
+  "short_name": "Pocket",
+  "description": "手机上查看并指挥桌面 dsh 会话",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "categories": ["developer", "productivity"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%230f1115'/%3E%3Ctext x='96' y='132' font-family='system-ui,sans-serif' font-size='104' font-weight='700' fill='%234d6bfe' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' fill='%230f1115'/%3E%3Ctext x='96' y='126' font-family='system-ui,sans-serif' font-size='84' font-weight='700' fill='%234d6bfe' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

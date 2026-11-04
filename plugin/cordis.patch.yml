@@ -1,0 +1,9 @@
+# dsh-pocket bundle patch —— 只挂自己这一行。
+#
+# 为什么只挂一行：市场的一键安装会读这个文件热挂载，如果这里同时挂了别的包，
+# 而用户 profile 里本来就有那个包，就会双重挂载 → 整个 dsh web 起不来
+# （`runtimeConfig` 里同一个 id 加载两次，报 locale/服务重复注册，连卸载页都打不开）。
+# 移动端布局由本包的客户端半内联解决，不需要第二行。
+- insert:
+    - id: dsh-pocket
+      name: dsh-pocket

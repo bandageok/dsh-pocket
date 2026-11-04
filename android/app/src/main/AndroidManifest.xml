@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  原生壳的清单。
+
+  权限逐条有理由：
+    INTERNET                 连 dsh-pocket（局域网或 tailnet）
+    ACCESS_NETWORK_STATE     切换 WiFi/移动网络时决定要不要重建隧道
+    POST_NOTIFICATIONS       Android 13+ 发通知必须显式申请
+    FOREGROUND_SERVICE(_DATA_SYNC) 常驻服务持有事件流，系统会显示常驻通知
+    BIND_VPN_SERVICE         VpnService 的必要声明（内置 Tailscale 模式）
+
+  刻意不要的：定位、读取存储、后台读取剪贴板 —— 一个都不需要。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.DshPocket">
+
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 常驻事件流：审批与「跑完了」的通知靠它 -->
+        <service
+            android:name=".WatchService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 内置 Tailscale 模式下的 VPNService（没有 AAR 时不会被启动） -->
+        <service
+            android:name=".PocketVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

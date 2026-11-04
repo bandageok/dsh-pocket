@@ -1,0 +1,40 @@
+{
+  "name": "dsh-pocket",
+  "version": "0.2.0",
+  "description": "把 dsh web 装进口袋：手机端 PWA + LAN 反代 + 可选中继，实时看会话、发指令、停任务。",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "mobile",
+    "pwa",
+    "remote"
+  ],
+  "scripts": {
+    "test": "node --test test/",
+    "standalone": "node tools/standalone.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

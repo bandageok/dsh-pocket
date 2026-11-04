@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DSH Pocket</string>
+    <string name="url_hint">电脑地址，例如 http://100.101.102.103:3081/__pocket__/</string>
+    <string name="connect">连接</string>
+    <string name="detect">自动探测</string>
+</resources>

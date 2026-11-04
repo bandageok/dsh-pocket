@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: 后端（插件 + 中继 + 手机端自检）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 全部零依赖，不需要 npm install —— 这一步本身就是个断言
+      - name: 插件测试
+        working-directory: plugin
+        run: node --test "test/**/*.test.mjs"
+
+      - name: 中继测试
+        working-directory: relay
+        run: node --test "test/**/*.test.mjs"
+
+      - name: 手机端自检（Node + 最小 DOM，真跑 app.js）
+        working-directory: plugin
+        run: node tools/pwa-smoke.mjs
+
+      - name: 零依赖断言（不该存在 node_modules 或 package-lock）
+        run: |
+          test ! -d plugin/node_modules
+          test ! -d relay/node_modules
+
+      - name: 诊断包不含令牌与路径（静态检查）
+        run: |
+          grep -rn "console.log(token" plugin/lib || true
+          ! grep -rn "private key" plugin/lib relay
+
+  android:
+    name: 原生壳（assembleDebug）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+
+      - name: 接受许可并装 SDK 组件
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null
+
+      # libtailscale.aar 不入库（见 android/README.md）；这里编的是 LAN/SYSTEM 模式的壳
+      - name: 构建
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dsh-pocket-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

@@ -1,0 +1,16 @@
+{
+  "name": "dsh-pocket-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "dsh-pocket 的可选中继：桌面拨出、手机会合，零依赖。",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}
