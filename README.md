@@ -1,5 +1,7 @@
 # dsh-pocket
 
+> 仓库：[bandageok/dsh-pocket](https://github.com/bandageok/dsh-pocket) · APK：[Releases](https://github.com/bandageok/dsh-pocket/releases/latest) · CI：`ci`（后端测试 + 手机端自检 + `assembleDebug` 全绿）
+
 **把 DeepSeek Harness (dsh) 装进口袋：人在外面，用手机看会话在跑什么、发一句指令、把它停下。**
 
 三件东西，全部零依赖、MIT：
@@ -17,7 +19,7 @@
 | 形态 | 装什么 | 谁适合 |
 |---|---|---|
 | **PWA**（默认） | 什么都不用装：浏览器打开插件给的地址，「添加到主屏幕」 | 只想先用起来；iOS/Android 通用 |
-| **原生 App**（Android） | `dist/dsh-pocket-0.1.0-debug.apk`（3.2 MB，debug 签名） | 要**内置 Tailscale 隧道**、要后台收「待审批 / 跑完了」通知 |
+| **原生 App**（Android） | [Releases](https://github.com/bandageok/dsh-pocket/releases/latest) 里的 `dsh-pocket-0.2.0-debug.apk`（3.2 MB，debug 签名） | 要**内置 Tailscale 隧道**、要后台收「待审批 / 跑完了」通知 |
 
 两者的界面是同一套 —— 原生壳不重画界面，只补 PWA 做不到的三件事：内置隧道、系统通知、常驻事件流。
 详见 [android/README.md](android/README.md)。
@@ -27,8 +29,8 @@
 **① 电脑：装插件**
 
 ```sh
-dsh plugin --profile web add github:<you>/dsh-pocket/plugin
-# 或者本地开发：
+dsh plugin --profile web add github:bandageok/dsh-pocket/plugin
+# 或者本地开发（改一版看一版）：
 dsh plugin --profile web add /path/to/dsh-pocket/plugin
 ```
 
@@ -123,6 +125,7 @@ node relay/server.mjs          # 默认 :8787，PORT 可改
 node --test "test/**/*.test.mjs"     # plugin/ 51 条
 node --test "test/**/*.test.mjs"     # relay/  4 条
 node tools/pwa-smoke.mjs             # 手机端 72 项（Node + 最小 DOM，真跑 app.js）
+node tools/tunnel-sim.mjs --dsh-port 3080 --token <token>   # 隧道模拟：真中继 + 真拨号 + 手机侧帧
 ```
 
 覆盖的关键面：Host/Origin 改写、闸门先于 token 注入、配对码锁定、`session/prompt` 的参数形状
