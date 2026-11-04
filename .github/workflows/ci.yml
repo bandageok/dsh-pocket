@@ -48,12 +48,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-
-      - name: 接受许可并装 SDK 组件
+      # 不用 android-actions/setup-android：它在较新的 runner 镜像上会去装一个
+      # 已被移除的 "tools" 包而失败。ubuntu-latest 自带 SDK，直接用现成的。
+      - name: 装 SDK 组件
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" > /dev/null
 
       # libtailscale.aar 不入库（见 android/README.md）；这里编的是 LAN/SYSTEM 模式的壳
       - name: 构建
