@@ -13,6 +13,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import libtailscale.AppContext
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * `libtailscale.AppContext` 的实现 —— 这个类就是 Go 引擎看 Android 的那扇窗。
@@ -117,7 +119,42 @@ class AppContextImpl(private val context: Context) : AppContext {
 
     override fun getInstallSource(): String = "dsh-pocket"
 
-    override fun getInterfacesAsJson(): String = "{}"
+    /**
+     * 网卡列表，**必须是数组**。
+     *
+     * Go 侧 `ifaceparse.ParseInterfacesJSONAsNetmon` 会 `json.Unmarshal` 到一个
+     * `[]ifaceJSON`；返回 `{}` 会让它报 `cannot unmarshal object into Go value of type
+     * []ifaceparse.ifaceJSON`，接着 netmon 建不起来，`setupLogs` 直接 panic，
+     * 整个进程 SIGABRT —— 表现就是「点启动隧道就闪退」。这里按它的字段名逐个填。
+     */
+    override fun getInterfacesAsJson(): String {
+        return try {
+            val list = ArrayList<JSONObject>()
+            for (nic in java.net.NetworkInterface.getNetworkInterfaces()) {
+                val addrs = JSONArray()
+                for (ia in nic.interfaceAddresses) {
+                    val ip = ia.address?.hostAddress?.substringBefore('%') ?: continue
+                    addrs.put(JSONObject().put("ip", ip).put("prefixLen", ia.networkPrefixLength.toInt()))
+                }
+                list.add(
+                    JSONObject()
+                        .put("name", nic.name)
+                        .put("index", nic.index)
+                        .put("mtu", runCatching { nic.mtu }.getOrDefault(0))
+                        .put("up", runCatching { nic.isUp }.getOrDefault(true))
+                        .put("broadcast", false)
+                        .put("loopback", runCatching { nic.isLoopback }.getOrDefault(false))
+                        .put("pointToPoint", runCatching { nic.isPointToPoint }.getOrDefault(false))
+                        .put("multicast", runCatching { nic.supportsMulticast() }.getOrDefault(false))
+                        .put("addrs", addrs),
+                )
+            }
+            JSONArray(list).toString()
+        } catch (err: Throwable) {
+            Log.w(TAG, "getInterfacesAsJson 失败：" + err.message)
+            "[]"
+        }
+    }
 
     override fun getPlatformDNSConfig(): String = ""
 

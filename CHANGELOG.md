@@ -2,6 +2,34 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号暂时跟 SemVer。
 
+## [0.3.1] — 2026-11-05
+
+### 修复（全部由 Android 模拟器实测发现）
+
+- **点「启动隧道」闪退（SIGABRT）**：`getInterfacesAsJson()` 返回了 `{}`，而 Go 侧
+  `ifaceparse` 要的是 `[]ifaceJSON` 数组 → netmon 建不起来 → `setupLogs` panic
+  → 进程 abort。现在按它的字段名（name/index/mtu/up/loopback/pointToPoint/multicast/addrs）
+  逐个填真实网卡，实测引擎能一路跑到 `control: AuthURL is https://login.tailscale.com/a/…`。
+- **ABI 不匹配直接 SIGILL 闪退**：APK 只打包 arm64 的 `libgojni.so`，在 x86_64 模拟器上
+  一加载就崩。现在启动引擎前先看 `Build.SUPPORTED_ABIS`，不支持就提示走局域网/中继模式。
+- **登录地址拿早了**：第一次 `login-interactive` 常返回 `url=false`（引擎刚生成 nodekey），
+  之前只问一次就报「拿不到登录地址」。现在轮询通知里的 `BrowseToURL` 与 status 的 `AuthURL`，
+  期间每 4 秒再踢一次，最多 25 秒。
+
+### 验证方式（可复现）
+
+```sh
+sdkmanager "emulator" "system-images;android-34;google_apis;x86_64"
+avdmanager create avd -n dshpocket -k "system-images;android-34;google_apis;x86_64" -d pixel_6
+emulator -avd dshpocket -no-window -gpu swiftshader_indirect &
+# 引擎要 x86_64 的 .so：
+gomobile bind -androidapi 24 -target=android/amd64 -o libtailscale.aar ./libtailscale
+adb install -r app-debug.apk && adb shell am start -n dev.dshpocket.app/.MainActivity
+```
+
+实测通过：安装 → 连接 → 配对 → 会话列表（SSE 在线）→ 会话详情 → VPN 授权弹窗 →
+引擎注册 controlplane → 拿到 `AuthURL` → 打开授权页。
+
 ## [0.3.0] — 2026-11-05
 
 ### 新增：内置 Tailscale（跨网络不再依赖系统 App 或中继）

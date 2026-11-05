@@ -37,6 +37,18 @@ App 内的用法：点「启动隧道」→ 系统弹 VPN 授权 → 引擎建�
 Tailscale 授权页放进 WebView → 登录后自动在 tailnet 里找那台电脑（探对端的 3081 端口）
 → 直接打开 DSH。
 
+## 模拟器实测（2026-11-05）
+
+在 `system-images;android-34;google_apis;x86_64`（Pixel 6）上跑通了：
+安装 → 连接 `10.0.2.2:3081` → 配对 → 会话列表（SSE 在线，真实会话）→ 会话详情 →
+「启动隧道」→ VPN 授权弹窗 → 引擎注册 controlplane → 拿到 `AuthURL`。
+
+这轮实测抓出三个 bug，都已修（见 CHANGELOG 0.3.1）。跑模拟器要注意：**引擎要 amd64 的 .so**，
+
+```sh
+gomobile bind -androidapi 24 -target=android/amd64 -o libtailscale.aar ./libtailscale
+```
+
 ## 三档隧道（现在的行为）
 
 「内置 Tailscale」需要 `libtailscale.aar`。没有它，工程也要能编、能装、能用 ——

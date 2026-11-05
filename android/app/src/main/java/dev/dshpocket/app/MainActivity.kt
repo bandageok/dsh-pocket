@@ -176,6 +176,11 @@ class MainActivity : AppCompatActivity() {
             status.text = "隧道已停止（回到局域网模式）"
             return
         }
+        Tailnet.unsupportedAbi()?.let { abis ->
+            status.visibility = View.VISIBLE
+            status.text = "这台设备的 CPU 架构（$abis）不在内置引擎的打包范围内，用局域网/中继模式"
+            return
+        }
         if (Tailnet.ensureEngine(this) == null) {
             status.visibility = View.VISIBLE
             status.text = "引擎启动失败：看 adb logcat -s DshPocket"
@@ -217,7 +222,8 @@ class MainActivity : AppCompatActivity() {
     /** 交互式登录：把授权页放到 WebView 里，登录完系统会回到 App。 */
     private fun openLogin() {
         io.execute {
-            val url = Tailnet.startLogin()
+            status.post { status.visibility = View.VISIBLE; status.text = "正在取登录地址…" }
+            val url = Tailnet.awaitAuthUrl()
             runOnUiThread {
                 if (url.isEmpty()) {
                     status.visibility = View.VISIBLE

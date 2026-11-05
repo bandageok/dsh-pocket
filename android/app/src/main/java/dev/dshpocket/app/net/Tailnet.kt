@@ -37,10 +37,26 @@ object Tailnet {
     @Volatile private var statusEverOk = false
     @Volatile private var noStateSince = 0L
 
+    /**
+     * 我们打包进 APK 的 ABI。少一个都别去启动引擎 —— 加载不动的 .so 会直接 SIGILL，
+     * 用户看到的是「闪退」，而真正的原因只是这台设备的 CPU 架构没被包含。
+     */
+    private val SHIPPED_ABIS = setOf("arm64-v8a", "x86_64")
+
+    /** 这台设备能不能跑内置引擎；跑不了就别给它闪退，给它一句人话。 */
+    fun unsupportedAbi(): String? {
+        val abis = android.os.Build.SUPPORTED_ABIS ?: emptyArray()
+        return if (abis.any { SHIPPED_ABIS.contains(it) }) null else abis.joinToString(",")
+    }
+
     /** 启动引擎（幂等）。dataDir 用 App 私有目录；第二个参数留给「直连文件根」，我们不用。 */
     @Synchronized
     fun ensureEngine(context: Context): Application? {
         app?.let { return it }
+        unsupportedAbi()?.let {
+            Log.w(TAG, "这台设备的 ABI 不在打包范围内（$it），跳过内置引擎")
+            return null
+        }
         return try {
             val started = Libtailscale.start(
                 context.filesDir.absolutePath,
@@ -163,6 +179,31 @@ object Tailnet {
         }.onFailure { Log.w(TAG, "login-interactive: " + it.message) }
         if (browseUrl.isEmpty()) browseUrl = status().optString("AuthURL", "")
         return browseUrl
+    }
+
+    /**
+     * 等登录地址。
+     *
+     * 第一次 `login-interactive` 常常返回 `url=false` —— 引擎刚注册完 nodekey，控制面还没
+     * 生成授权链接。所以要**轮询**：先读通知（`BrowseToURL`），再读 status 的 `AuthURL`，
+     * 期间每隔几秒再踢一次 `login-interactive`。参考实现也是这么兜的，只是它把状态摊在 UI 上。
+     */
+    fun awaitAuthUrl(timeoutMs: Long = 25000): String {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var lastKick = 0L
+        while (System.currentTimeMillis() < deadline) {
+            extractUrl(lastNotify).takeIf { it.startsWith("http") }?.let { return it }
+            statusAt = 0 // 强制下一次 status() 真的去拉
+            status().optString("AuthURL", "").takeIf { it.startsWith("http") }?.let { return it }
+            browseUrl.takeIf { it.startsWith("http") }?.let { return it }
+            val now = System.currentTimeMillis()
+            if (now - lastKick > 4000) {
+                lastKick = now
+                runCatching { call("POST", "login-interactive", "") }
+            }
+            Thread.sleep(700)
+        }
+        return ""
     }
 
     fun logout() {
