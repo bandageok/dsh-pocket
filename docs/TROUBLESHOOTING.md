@@ -177,7 +177,7 @@ creating dns cleanup: Invalid class string
 ```
 
 诊断要点：**服务在跑 ≠ 后端在跑**。`Get-Service Tailscale` 显示 Running 也可能永远没有
-`\.\pipe\ProtectedPrefix\Administrators\Tailscale	ailscaled`，这时任何 CLI 命令都连不上，
+`\\.\pipe\ProtectedPrefix\Administrators\Tailscale\tailscaled`，这时任何 CLI 命令都连不上，
 GUI 的 Log in 也没有反应。
 
 一键修：`pwsh scripts/fix-tailscale.ps1`（自带提权：重启服务 → 等管道 → 取授权链接 →
