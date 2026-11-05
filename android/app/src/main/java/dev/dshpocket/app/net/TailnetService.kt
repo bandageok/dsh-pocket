@@ -8,6 +8,7 @@ import android.os.ParcelFileDescriptor
 import android.system.OsConstants
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import dev.dshpocket.app.CrashLog
 import libtailscale.IPNService
 import libtailscale.Libtailscale
 import libtailscale.VPNServiceBuilder
@@ -30,7 +31,17 @@ class TailnetService : VpnService(), IPNService {
 
     private val instanceId: String = UUID.randomUUID().toString()
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = try {
+        handleStart(intent)
+    } catch (err: Throwable) {
+        // 服务里任何异常都会把进程带走，先记下来，下一次打开 App 会显示原因
+        Log.w(TAG, "TailnetService 启动失败：" + err)
+        CrashLog.record(this, "TailnetService.onStartCommand", err)
+        stopSelf()
+        START_NOT_STICKY
+    }
+
+    private fun handleStart(intent: Intent?): Int {
         val action = intent?.action
         if (action == ACTION_STOP) {
             try {
@@ -61,11 +72,27 @@ class TailnetService : VpnService(), IPNService {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+        // systemExempted：长跑的 VPN 前台服务，Android 14 不会掐。
+        // 但它属于「受限类型」——少数机型/系统策略会直接抛 SecurityException，
+        // 这种情况下宁可退成不带类型的前台服务，也不要让用户看到闪退。
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            // systemExempted：长跑的 VPN 前台服务，否则 Android 14 会掐掉
-            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
-        } else {
+            try {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED,
+                )
+                return
+            } catch (err: Throwable) {
+                Log.w(TAG, "systemExempted 前台服务被拒，退回普通前台服务：" + err.message)
+                CrashLog.record(this, "startForeground(systemExempted)", err)
+            }
+        }
+        try {
             startForeground(NOTIFICATION_ID, notification)
+        } catch (err: Throwable) {
+            Log.w(TAG, "startForeground 失败：" + err.message)
+            CrashLog.record(this, "startForeground", err)
         }
     }
 
@@ -151,7 +178,16 @@ class TailnetService : VpnService(), IPNService {
 
         fun start(context: Context) {
             val intent = Intent(context, TailnetService::class.java).setAction(ACTION_START)
-            context.startForegroundService(intent)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (err: Throwable) {
+                Log.w(TAG, "startForegroundService 失败：" + err.message)
+                CrashLog.record(context, "startForegroundService", err)
+            }
         }
 
         fun stop(context: Context) {

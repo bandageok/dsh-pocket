@@ -2,6 +2,18 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号暂时跟 SemVer。
 
+## [0.3.2] — 2026-11-05
+
+### 修复：真机点「启动隧道」闪退，且闪退原因无处可查
+
+- **崩溃留痕**（`CrashLog`）：异常类型/消息/前 4 层栈写进私有 SharedPreferences，
+  并注册全局 `UncaughtExceptionHandler`。下次打开 App 时把最近一条**直接显示在状态栏**，
+  不用再让用户去捞 logcat。
+- **前台服务兜底**：`systemExempted` 在少数机型上属于受限类型，`startForeground` 会抛
+  `SecurityException` 把进程带走。现在被拒就退回普通前台服务，并记一条痕迹。
+- `onStartCommand` / `startForegroundService` 全部包住，异常不再直接杀掉进程。
+- 状态栏显示**版本号**（`v0.3.2`）：报问题时先确认装的是哪一版。
+
 ## [0.3.1] — 2026-11-05
 
 ### 修复（全部由 Android 模拟器实测发现）

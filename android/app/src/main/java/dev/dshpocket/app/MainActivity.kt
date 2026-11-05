@@ -106,6 +106,19 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.connect).setOnClickListener { connect(urlField.text.toString()) }
         findViewById<Button>(R.id.probe).setOnClickListener { probeNow() }
+        CrashLog.install(this)
+
+        // 版本号写在状态栏里：用户报「闪退」时，先确认他装的是哪一版
+        val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
+        status.visibility = View.VISIBLE
+        status.text = "v" + version + "　模式：" + TailnetController.describe(this)
+
+        // 上次崩溃留下的痕迹：直接摊在界面上，省得让用户去捞 logcat
+        CrashLog.take(this)?.let { trace ->
+            status.text = "上次出错 → " + trace.lineSequence().first()
+            android.util.Log.w("DshPocket", "上次崩溃: " + trace)
+        }
+
         findViewById<Button>(R.id.tunnel).setOnClickListener { toggleTunnel() }
         findViewById<Button>(R.id.login).setOnClickListener { openLogin() }
         findViewById<Button>(R.id.detect).setOnClickListener { detect() }
