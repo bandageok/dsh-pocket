@@ -72,14 +72,39 @@ class MainActivity : AppCompatActivity() {
             useWideViewPort = true
             loadWithOverviewMode = true
         }
+        // Tailscale 登录用弹窗（Google/Microsoft 的 OAuth），不接管的话会跳到系统浏览器，
+        // 登录完就再也回不来。这里把弹窗的 URL 塞回同一个 WebView，全程留在 App 内。
+        web.webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onCreateWindow(
+                view: WebView,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: android.os.Message,
+            ): Boolean {
+                val popup = WebView(this@MainActivity)
+                popup.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(v: WebView, req: WebResourceRequest): Boolean {
+                        web.loadUrl(req.url.toString())
+                        v.destroy()
+                        return true
+                    }
+                }
+                (resultMsg.obj as WebView.WebViewTransport).webView = popup
+                resultMsg.sendToTarget()
+                return true
+            }
+        }
+
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                // 只在自己这个来源里导航；外部链接交给系统浏览器
-                val url = request.url
-                val base = Prefs.baseUrl(this@MainActivity)
-                if (base != null && url.toString().startsWith(base.trimEnd('/'))) return false
+                // 单用途 App：http/https 一律留在自己这个 WebView 里。
+                // 之前把所有外部地址丢给系统浏览器，结果 Tailscale 的授权页被踢到 Chrome，
+                // 登录完就回不来（OAuth 也不会回流到 App）。非 http(s)（mailto/tel/intent）
+                // 才交给系统。
+                val scheme = request.url.scheme?.lowercase() ?: return false
+                if (scheme == "http" || scheme == "https") return false
                 return try {
-                    startActivity(Intent(Intent.ACTION_VIEW, url)); true
+                    startActivity(Intent(Intent.ACTION_VIEW, request.url)); true
                 } catch (_: Exception) {
                     false
                 }
@@ -95,6 +120,9 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(view: WebView, url: String) {
+                // 从 Tailscale 授权页/任何外部页回来，就再问一次隧道状态：
+                // 登录一完成 backend 就会变 Running，这里能自动接上
+                if (!url.contains("/__pocket__")) main.postDelayed({ pollTunnel(0) }, 800)
                 super.onPageFinished(view, url)
                 // PWA 把令牌放在 localStorage；桥只取用，不落盘
                 bridge.adoptFromPage(view)
@@ -136,26 +164,58 @@ class MainActivity : AppCompatActivity() {
      *   2. https + 域名（cloudflared / 反代）→ **不能**补 3081，443 就是对的。
      *   3. 只填到根路径 → 补 `/__pocket__/` 挂载点。
      */
+    /** host 的合法形态：IPv4 / IPv6 字面量、localhost、带点的域名。 */
+    private fun looksLikeHost(text: String): Boolean {
+        if (text == "localhost") return true
+        if (text.startsWith("[")) return true
+        if (text.matches(Regex("^[0-9.]+$"))) return true
+        return text.matches(Regex("^[A-Za-z0-9.-]+[.][A-Za-z]{2,}$"))
+    }
+
+    /**
+     * 把用户输入（以及历史版本存下的脏值）归一成可用地址。
+     *
+     * 被写坏的形态长这样（真机实测抓到过）：`http//__pocket__/10.103.7.195:3081/`、
+     * 甚至 `http://http//__pocket__/…`。所以这里不做「拼字符串」式的修补，而是
+     * **逐段找第一个像 host 的片段**，再按 scheme/端口规则重建整套地址 —— 脏成什么样都能捞回来。
+     */
     private fun normalize(raw: String): String? {
-        var text = raw.trim()
+        var text = raw.trim().replace(Regex("[ \t\n\r]+"), "")
         if (text.isEmpty()) return null
-        if (!text.startsWith("http://") && !text.startsWith("https://")) text = "http://$text"
-        val uri = Uri.parse(text)
-        val host = uri.host ?: return null
-        val scheme = uri.scheme ?: "http"
-        val looksLikeLiteral = host == "localhost" || host.matches(Regex("^[0-9.]+$")) || host.startsWith("[")
+
+        var scheme = "http"
+        for (i in 0 until 6) {
+            val lower = text.lowercase()
+            when {
+                lower.startsWith("https://") -> { scheme = "https"; text = text.substring(8) }
+                lower.startsWith("http://") -> { scheme = "http"; text = text.substring(7) }
+                lower.startsWith("https:/") -> { scheme = "https"; text = text.substring(7) }
+                lower.startsWith("http:/") -> { scheme = "http"; text = text.substring(6) }
+                lower.startsWith("https//") -> { scheme = "https"; text = text.substring(7) }
+                lower.startsWith("http//") -> { scheme = "http"; text = text.substring(6) }
+                else -> break
+            }
+        }
+
+        val hostPort = text.split("/")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && it != "__pocket__" }
+            .firstOrNull { looksLikeHost(it.substringBefore(':')) }
+            ?: return null
+
+        val host = hostPort.substringBefore(':')
+        val explicit = hostPort.substringAfter(':', "").toIntOrNull()
+        val literal = host == "localhost" || host.startsWith("[") || host.matches(Regex("^[0-9.]+$"))
         val port = when {
-            uri.port > 0 -> uri.port
-            scheme == "https" -> -1            // 走默认 443，别乱加端口
-            looksLikeLiteral -> DEFAULT_PORT   // 局域网/tailnet 的裸 IP
+            explicit != null && explicit > 0 -> explicit
+            scheme == "https" -> -1
+            literal -> DEFAULT_PORT
             else -> -1
         }
-        val tail = uri.encodedPath?.takeIf { it.contains("__pocket__") } ?: "/__pocket__/"
-        val withSlash = if (tail.endsWith("/")) tail else "$tail/"
         return buildString {
             append(scheme).append("://").append(host)
             if (port > 0) append(":").append(port)
-            append(withSlash)
+            append("/__pocket__/")
         }
     }
 

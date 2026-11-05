@@ -2,6 +2,25 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号暂时跟 SemVer。
 
+## [0.3.3] — 2026-11-05
+
+### 修复（真机 Redmi K60 Ultra / Android 16 实测，USB 直连逐项验证）
+
+- **点「启动隧道」闪退的真因**：`startForeground` 用了 `channel="status"` 却**从未创建这个渠道**，
+  系统抛 `CannotPostForegroundServiceNotificationException - Bad notification for startForeground`，
+  进程被杀。现在先 `ensureChannel()` 建渠道（IMPORTANCE_LOW），并换用自己的状态栏图标
+  `ic_stat_tunnel`（纯白剪影，系统着色）。
+- **地址被自己写坏**：历史版本存下过 `http//__pocket__/10.103.7.195:3081/`、甚至
+  `http://http//__pocket__/…`，旧归一化又把它们拼成 `http://http//__pocket__/…`（打不开）。
+  现在改为**逐段找第一个像 host 的片段**再重建，12 组脏输入全部通过；启动时还会把存下的
+  脏值洗一遍写回。
+- **登录页被踢到系统浏览器**：`shouldOverrideUrlLoading` 把所有非插件地址都交给
+  `ACTION_VIEW`，Tailscale 授权页因此跑到 Chrome，登录完回不来。现在 http/https 一律
+  留在 App 内的 WebView；非 http(s)（mailto/tel）才外跳。
+- **OAuth 弹窗**：加 `WebChromeClient.onCreateWindow`，把登录弹窗的 URL 收回同一个 WebView。
+- **登录完成后自动接上**：`onPageFinished` 里若离开插件页，就重新检查隧道状态，
+  `Running` 后自动在 tailnet 里找电脑并打开。
+
 ## [0.3.2] — 2026-11-05
 
 ### 修复：真机点「启动隧道」闪退，且闪退原因无处可查

@@ -7,8 +7,11 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.system.OsConstants
 import android.util.Log
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
 import dev.dshpocket.app.CrashLog
+import dev.dshpocket.app.R
 import libtailscale.IPNService
 import libtailscale.Libtailscale
 import libtailscale.VPNServiceBuilder
@@ -64,11 +67,31 @@ class TailnetService : VpnService(), IPNService {
         }
     }
 
+    /**
+     * 通知渠道必须**先建**。
+     *
+     * 少了这一步，`startForeground` 会被系统判为 "Bad notification for startForeground"，
+     * 抛 CannotPostForegroundServiceNotificationException —— 在真机（HyperOS / Android 16）
+     * 上表现为「点启动隧道直接闪退」。模拟器上是宽松处理，所以之前没暴露。
+     */
+    private fun ensureChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        if (manager.getNotificationChannel(CHANNEL) != null) return
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL, "隧道状态", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "内置 Tailscale 连接状态"
+                setShowBadge(false)
+            },
+        )
+    }
+
     private fun startForegroundSafely() {
+        ensureChannel()
         val notification = NotificationCompat.Builder(this, CHANNEL)
             .setContentTitle("dsh-pocket 隧道")
             .setContentText("仅本 App 的流量经过 Tailscale")
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setSmallIcon(R.drawable.ic_stat_tunnel)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
