@@ -24,6 +24,12 @@
   },
   "tasks": [
     {
+      "label": "⑪ 打开手机窗口（有界面，一键）",
+      "type": "shell",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phone.ps1",
+      "problemMatcher": []
+    },
+    {
       "label": "① 构建 APK（arm64，给真机）",
       "type": "shell",
       "command": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/use-engine.ps1 -Abi arm64; cd android; .\\gradlew.bat --no-daemon assembleDebug",
@@ -83,6 +89,12 @@
       "label": "⑩ 一键：模拟器全流程（构建→启动→装机→日志）",
       "dependsOrder": "sequence",
       "dependsOn": ["② 构建 APK（x86_64，给模拟器）", "③ 启动模拟器（无窗口，端口 5554）", "④ 等模拟器起来", "⑤ 安装并启动 App", "⑥ 看引擎日志（隧道/登录）"],
+      "problemMatcher": []
+    },
+    {
+      "label": "⑫ 关掉模拟器",
+      "type": "shell",
+      "command": "adb -s emulator-5554 emu kill",
       "problemMatcher": []
     }
   ]
