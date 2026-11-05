@@ -19,7 +19,7 @@
 | 形态 | 装什么 | 谁适合 |
 |---|---|---|
 | **PWA**（默认） | 什么都不用装：浏览器打开插件给的地址，「添加到主屏幕」 | 只想先用起来；iOS/Android 通用 |
-| **原生 App**（Android） | [Releases](https://github.com/bandageok/dsh-pocket/releases/latest) 里的 `dsh-pocket-0.2.0-debug.apk`（3.2 MB，debug 签名） | 要**内置 Tailscale 隧道**、要后台收「待审批 / 跑完了」通知 |
+| **原生 App**（Android） | [Releases](https://github.com/bandageok/dsh-pocket/releases/latest) 里的 `dsh-pocket-0.3.0-debug.apk`（28.7 MB，**内含 Tailscale 引擎**） | 要**不在同一局域网也能连**、要后台收「待审批 / 跑完了」通知 |
 
 两者的界面是同一套 —— 原生壳不重画界面，只补 PWA 做不到的三件事：内置隧道、系统通知、常驻事件流。
 详见 [android/README.md](android/README.md)。
@@ -185,7 +185,7 @@ cd plugin && node tools/standalone.mjs --dsh-port 3080 --token <launch token>
 | 局域网直连 | 同一 WiFi | 已实测 |
 | 官方 Tailscale（两端） | 一个 Tailscale 账号 | 可用（APK 自动进入 SYSTEM 模式） |
 | 自建中继 | 一台有公网 IP 的机器跑 `relay/server.mjs` | 已实测（tunnel-sim） |
-| 内置 Tailscale 引擎 | 复用它那份 `libgojni.so` + 重写约 600 行粘合层 | 未做：JNI 签名需要真机验证 |
+| 内置 Tailscale 引擎 | 装 0.3.0 的 APK，点「启动隧道」 | ✅ 已内置（`gomobile bind` 自建 AAR，见 [THIRD-PARTY.md](THIRD-PARTY.md)） |
 
 ## 已知限制（诚实清单）
 

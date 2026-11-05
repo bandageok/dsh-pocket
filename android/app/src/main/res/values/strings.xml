@@ -5,4 +5,6 @@
     <string name="connect">连接</string>
     <string name="detect">自动探测</string>
     <string name="probe">测试</string>
+    <string name="tunnel">启动隧道</string>
+    <string name="login">登录 Tailscale</string>
 </resources>

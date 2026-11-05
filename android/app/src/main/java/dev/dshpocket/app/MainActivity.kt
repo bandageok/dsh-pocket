@@ -3,6 +3,9 @@ package dev.dshpocket.app
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
+import android.net.VpnService
+import android.os.Handler
+import android.os.Looper
 import android.os.Bundle
 import android.view.View
 import android.webkit.WebResourceError
@@ -19,6 +22,8 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
+import dev.dshpocket.app.net.Tailnet
+import dev.dshpocket.app.net.TailnetService
 
 /**
  * 原生壳的主界面。
@@ -36,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         /** 插件的默认端口；用户只填 IP 时补它，否则会去连 80 端口。 */
         const val DEFAULT_PORT = 3081
+        const val VPN_REQUEST = 9001
     }
 
     private lateinit var web: WebView
@@ -100,6 +106,8 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.connect).setOnClickListener { connect(urlField.text.toString()) }
         findViewById<Button>(R.id.probe).setOnClickListener { probeNow() }
+        findViewById<Button>(R.id.tunnel).setOnClickListener { toggleTunnel() }
+        findViewById<Button>(R.id.login).setOnClickListener { openLogin() }
         findViewById<Button>(R.id.detect).setOnClickListener { detect() }
 
         // 已经配过就直接进
@@ -148,6 +156,112 @@ class MainActivity : AppCompatActivity() {
         status.text = "连接 " + Uri.parse(target).host + " …"
         web.loadUrl(target)
         bridge.startWatch(target)
+    }
+
+    // ── 内置 Tailscale ────────────────────────────────────────────────
+
+    private val main = Handler(Looper.getMainLooper())
+
+    /**
+     * 一键隧道：引擎 → VPN 授权 → 后台建连 → 在 tailnet 里找电脑 → 打开它。
+     *
+     * 这条路和参考实现一致：引擎跑在本进程里，VpnService 只承载本 App 的流量，
+     * 所以「不在同一局域网」靠的是 WireGuard 打洞/DERP 中继，而不是端口映射。
+     */
+    private fun toggleTunnel() {
+        if (Tailnet.isRunning()) {
+            Tailnet.setWantRunning(false)
+            TailnetService.stop(this)
+            status.visibility = View.VISIBLE
+            status.text = "隧道已停止（回到局域网模式）"
+            return
+        }
+        if (Tailnet.ensureEngine(this) == null) {
+            status.visibility = View.VISIBLE
+            status.text = "引擎启动失败：看 adb logcat -s DshPocket"
+            return
+        }
+        val consent = VpnService.prepare(this)
+        if (consent != null) {
+            startActivityForResult(consent, VPN_REQUEST)
+            return
+        }
+        startTunnel()
+    }
+
+    private fun startTunnel() {
+        TailnetService.start(this)
+        Tailnet.setWantRunning(true)
+        status.visibility = View.VISIBLE
+        status.text = "隧道启动中…"
+        pollTunnel(0)
+    }
+
+    private fun pollTunnel(tries: Int) {
+        io.execute {
+            val state = Tailnet.backendState()
+            val needLogin = Tailnet.needsLogin()
+            runOnUiThread {
+                status.visibility = View.VISIBLE
+                status.text = "隧道：" + (if (state.isEmpty()) "启动中" else state)
+                when {
+                    state == "Running" -> discoverAndLoad()
+                    needLogin && tries > 2 -> openLogin()
+                    tries < 25 -> main.postDelayed({ pollTunnel(tries + 1) }, 1200)
+                    else -> status.text = "隧道没能起来（" + (if (state.isEmpty()) "无响应" else state) + "）"
+                }
+            }
+        }
+    }
+
+    /** 交互式登录：把授权页放到 WebView 里，登录完系统会回到 App。 */
+    private fun openLogin() {
+        io.execute {
+            val url = Tailnet.startLogin()
+            runOnUiThread {
+                if (url.isEmpty()) {
+                    status.visibility = View.VISIBLE
+                    status.text = "拿不到登录地址：先点「启动隧道」，或看 logcat"
+                } else {
+                    status.visibility = View.VISIBLE
+                    status.text = "在下面登录 Tailscale，完成后回到这里点「连接」"
+                    web.loadUrl(url)
+                }
+            }
+        }
+    }
+
+    /**
+     * tailnet 里找那台电脑：逐个探对端的 3081 端口，谁回 health 就是它。
+     * 只探在线 peer，且限 100.x，避免把手机自己的出口也扫一遍。
+     */
+    private fun discoverAndLoad() {
+        val peers = Tailnet.peerAddresses()
+        status.text = "隧道已连，正在找电脑…（" + peers.size + " 个在线节点）"
+        io.execute {
+            for (ip in peers) {
+                val base = "http://" + ip + ":" + DEFAULT_PORT + "/__pocket__/"
+                if (probe(base)) {
+                    runOnUiThread { connect(base) }
+                    return@execute
+                }
+            }
+            runOnUiThread {
+                status.visibility = View.VISIBLE
+                status.text = "隧道通了，但没找到开着 dsh-pocket 的电脑（检查电脑端 Tailscale 是否登录）"
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == VPN_REQUEST) {
+            if (resultCode == RESULT_OK) startTunnel()
+            else {
+                status.visibility = View.VISIBLE
+                status.text = "没给 VPN 权限，内置隧道用不了（可以继续用局域网 / 中继）"
+            }
+        }
     }
 
     /**

@@ -20,14 +20,31 @@ package: dev.dshpocket.app  versionName=0.1.0  minSdk=24  targetSdk=34
 
 仓库里放了一份编好的 debug APK：`dist/dsh-pocket-0.1.0-debug.apk`（debug 签名，可直接侧载）。
 
-## 三档隧道（关键设计）
+## 内置 Tailscale 现在是**真的**了
+
+`android/app/libs/libtailscale.aar` 已经入库（16.7 MB，由 `gomobile bind` 生成，
+来源与许可见 [THIRD-PARTY.md](../THIRD-PARTY.md)）。所以直接：
+
+```sh
+cd android && ./gradlew assembleDebug      # 28.7 MB 的 APK，内含 libgojni.so
+```
+
+APK 里的 dex **定义了** `libtailscale.*`（277 个条目），`lib/arm64-v8a/libgojni.so` 25.4 MB ——
+和参考实现的发布包不同（它只带了 .so，没带 Java 绑定类，见
+[docs/REVERSE-ENGINEERING.md](../docs/REVERSE-ENGINEERING.md)）。
+
+App 内的用法：点「启动隧道」→ 系统弹 VPN 授权 → 引擎建连 → 若未登录会自动把
+Tailscale 授权页放进 WebView → 登录后自动在 tailnet 里找那台电脑（探对端的 3081 端口）
+→ 直接打开 DSH。
+
+## 三档隧道（现在的行为）
 
 「内置 Tailscale」需要 `libtailscale.aar`。没有它，工程也要能编、能装、能用 ——
 所以隧道能力做成三档，运行时自动判定（`TailnetController.mode()`）：
 
 | 模式 | 判定条件 | 行为 | 现在的状态 |
 |---|---|---|---|
-| **EMBEDDED** | classpath 上有 `libtailscale.*` | 起本 App 专属 `VpnService`，只把本 App 的流量导进 tailnet | 代码已到位，**缺 AAR** |
+| **EMBEDDED** | classpath 上有 `libtailscale.*` | 起本 App 专属 `VpnService`（`addAllowedApplication`），只把本 App 的流量导进 tailnet | ✅ **已内置** |
 | **SYSTEM** | 装了官方 Tailscale App | 提示用户打开它；全机 VPN，本 App 照样可用 | 可用 |
 | **LAN** | 都没有 | 同一局域网；等价于 PWA 默认形态 | **可用（已实测）** |
 

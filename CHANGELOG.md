@@ -2,6 +2,27 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号暂时跟 SemVer。
 
+## [0.3.0] — 2026-11-05
+
+### 新增：内置 Tailscale（跨网络不再依赖系统 App 或中继）
+
+- 用 `gomobile bind` 自建 `libtailscale.aar`（16.7 MB，arm64+arm），入库并随 APK 打包；
+  APK 28.7 MB，dex 里**定义了** `libtailscale.*`（277 个条目），`lib/arm64-v8a/libgojni.so` 25.4 MB。
+- 实现 gomobile 生成的三个接口，结构照搬参考实现 DSHgo：
+  - `AppContext`（22 个方法）：设备名、Keystore AES-GCM 加密的登录态、`bindSocketToNetwork`、日志与 SDK 信息
+  - `IPNService` + `VPNServiceBuilder`：`addAllowedApplication(packageName)` 做**应用专用隧道**，
+    MagicDNS `100.100.100.100`，配置由 Go 侧回调驱动
+  - localapi 驱动：`start` / `prefs(WantRunning)` / `status` / `login-interactive` / `watchNotifications`
+- App 内一键流程：启动隧道 → VPN 授权 → 未登录时把 Tailscale 授权页放进 WebView →
+  Running 后扫描在线 peer 的 3081 端口找到电脑 → 直接打开 DSH。
+- 清单加 `FOREGROUND_SERVICE_SYSTEM_EXEMPTED` + `foregroundServiceType="systemExempted"`，
+  否则 Android 14 会掐掉长跑的前台 VPN 服务。
+
+### 修复
+
+- 参考实现的发布包只有 `.so`、没有 gomobile 的 Java 绑定类（好东西抄不到），
+  这次自建 AAR 把这一层补齐了；证据见 `docs/REVERSE-ENGINEERING.md`。
+
 ## [0.2.1] — 2026-11-05
 
 ### 修复
