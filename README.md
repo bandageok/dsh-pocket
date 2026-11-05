@@ -172,6 +172,21 @@ cd plugin && node tools/standalone.mjs --dsh-port 3080 --token <launch token>
 
 `--token` 可以从 `dsh web` 的启动日志里抄：`http://127.0.0.1:3080/?token=…`。这样改一行代码就能看效果，不用重启 dsh。
 
+## 参考实现与「跨网络」的真相
+
+「不在同一局域网也能连」不是魔法：[docs/REVERSE-ENGINEERING.md](docs/REVERSE-ENGINEERING.md)
+拆了参考实现 DSHgo v1.3 的 APK（含 `libgojni.so` 的 105 个 JNI 符号），结论是它把
+**Tailscale 客户端引擎整个编进了 APK**（35 MB .so），穿透能力来自 Tailscale，不来自那个 App。
+
+我们的三条路按「今天能不能用」排序：
+
+| 路线 | 需要 | 状态 |
+|---|---|---|
+| 局域网直连 | 同一 WiFi | 已实测 |
+| 官方 Tailscale（两端） | 一个 Tailscale 账号 | 可用（APK 自动进入 SYSTEM 模式） |
+| 自建中继 | 一台有公网 IP 的机器跑 `relay/server.mjs` | 已实测（tunnel-sim） |
+| 内置 Tailscale 引擎 | 复用它那份 `libgojni.so` + 重写约 600 行粘合层 | 未做：JNI 签名需要真机验证 |
+
 ## 已知限制（诚实清单）
 
 - **不是 APK**。PWA 免安装、iOS/Android 通用，代价是：iOS 上通知要「添加到主屏幕」才可用；后台被系统冻结时收不到推送（v0.1 没有 Push）。
