@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  原生壳的清单。
+  清单。
 
-  权限逐条有理由：
-    INTERNET                 连 dsh-pocket（局域网或 tailnet）
-    ACCESS_NETWORK_STATE     切换 WiFi/移动网络时决定要不要重建隧道
-    POST_NOTIFICATIONS       Android 13+ 发通知必须显式申请
-    FOREGROUND_SERVICE(_DATA_SYNC) 常驻服务持有事件流，系统会显示常驻通知
-    BIND_VPN_SERVICE         VpnService 的必要声明（内置 Tailscale 模式）
+  权限只留三个：
+    INTERNET               连 dsh 插件（局域网地址或公网隧道地址）
+    ACCESS_NETWORK_STATE   网络切换时要判断是否需要重连
+    POST_NOTIFICATIONS     Android 13+ 发通知需要运行时授权
 
-  刻意不要的：定位、读取存储、后台读取剪贴板 —— 一个都不需要。
+  另加 FOREGROUND_SERVICE(_DATA_SYNC)：常驻通知服务（WatchService）要用，系统会显示常驻通知。
+
+  不做 VPN、不建隧道：跨网络靠 scripts/outside-tunnel.ps1 在电脑侧发布 HTTPS 地址，
+  手机按普通地址连即可。所以这里既没有 BIND_VPN_SERVICE，也没有任何 VPN 服务。
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -18,7 +19,6 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
 
     <application
         android:allowBackup="false"
@@ -40,31 +40,10 @@
             </intent-filter>
         </activity>
 
-        <!-- 常驻事件流：审批与「跑完了」的通知靠它 -->
+        <!-- 常驻事件流：把「待审批 / 跑完了」推成系统通知。与 VPN 无关。 -->
         <service
             android:name=".WatchService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
-
-        <!-- 内置 Tailscale：Go 引擎驱动这个 VpnService，只承载本 App 的流量 -->
-        <service
-            android:name=".net.TailnetService"
-            android:exported="false"
-            android:foregroundServiceType="systemExempted"
-            android:permission="android.permission.BIND_VPN_SERVICE">
-            <intent-filter>
-                <action android:name="android.net.VpnService" />
-            </intent-filter>
-        </service>
-
-        <!-- 旧的自建 VpnService：保留着但不启动（tailnet 模式下由 TailnetService 接管） -->
-        <service
-            android:name=".PocketVpnService"
-            android:exported="false"
-            android:permission="android.permission.BIND_VPN_SERVICE">
-            <intent-filter>
-                <action android:name="android.net.VpnService" />
-            </intent-filter>
-        </service>
     </application>
 </manifest>

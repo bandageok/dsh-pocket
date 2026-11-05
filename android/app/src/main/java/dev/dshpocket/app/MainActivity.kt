@@ -3,7 +3,6 @@ package dev.dshpocket.app
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
-import android.net.VpnService
 import android.os.Handler
 import android.os.Looper
 import android.os.Bundle
@@ -22,15 +21,12 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
-import dev.dshpocket.app.net.Tailnet
-import dev.dshpocket.app.net.TailnetService
 
 /**
  * 原生壳的主界面。
  *
  * 取舍：**UI 仍然是插件服务的那套 PWA**，原生只负责三件事：
  *   1. 把 WebView 指到正确的地址（局域网 / tailnet / 中继）
- *   2. 申请内置 Tailscale 隧道（见 TailnetController，三档降级）
  *   3. 起常驻服务收通知（审批 / 跑完了）—— 这是 PWA 在手机上做不到的
  *
  * 为什么不重写界面：PWA 已经把转录、上传、审批、诊断全做了；重写一遍既慢，
@@ -41,7 +37,6 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         /** 插件的默认端口；用户只填 IP 时补它，否则会去连 80 端口。 */
         const val DEFAULT_PORT = 3081
-        const val VPN_REQUEST = 9001
     }
 
     private lateinit var web: WebView
@@ -61,7 +56,7 @@ class MainActivity : AppCompatActivity() {
 
         val saved = Prefs.baseUrl(this)
         urlField.setText(saved ?: "http://")
-        status.text = "模式：" + TailnetController.describe(this)
+        status.text = "填电脑地址后点「连接」；在外面用 scripts/outside-tunnel.ps1 给出的公网地址"
 
         web.settings.apply {
             javaScriptEnabled = true
@@ -72,7 +67,7 @@ class MainActivity : AppCompatActivity() {
             useWideViewPort = true
             loadWithOverviewMode = true
         }
-        // Tailscale 登录用弹窗（Google/Microsoft 的 OAuth），不接管的话会跳到系统浏览器，
+        // 页面里的弹窗（例如授权页的 OAuth）不接管的话会跳到系统浏览器，
         // 登录完就再也回不来。这里把弹窗的 URL 塞回同一个 WebView，全程留在 App 内。
         web.webChromeClient = object : android.webkit.WebChromeClient() {
             override fun onCreateWindow(
@@ -98,7 +93,7 @@ class MainActivity : AppCompatActivity() {
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 // 单用途 App：http/https 一律留在自己这个 WebView 里。
-                // 之前把所有外部地址丢给系统浏览器，结果 Tailscale 的授权页被踢到 Chrome，
+                // 之前把所有外部地址丢给系统浏览器，结果登录/授权页被踢到 Chrome，
                 // 登录完就回不来（OAuth 也不会回流到 App）。非 http(s)（mailto/tel/intent）
                 // 才交给系统。
                 val scheme = request.url.scheme?.lowercase() ?: return false
@@ -120,9 +115,8 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                // 从 Tailscale 授权页/任何外部页回来，就再问一次隧道状态：
+                // 从外部页面回来时不留残留状态：
                 // 登录一完成 backend 就会变 Running，这里能自动接上
-                if (!url.contains("/__pocket__")) main.postDelayed({ pollTunnel(0) }, 800)
                 super.onPageFinished(view, url)
                 // PWA 把令牌放在 localStorage；桥只取用，不落盘
                 bridge.adoptFromPage(view)
@@ -139,7 +133,7 @@ class MainActivity : AppCompatActivity() {
         // 版本号写在状态栏里：用户报「闪退」时，先确认他装的是哪一版
         val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "?"
         status.visibility = View.VISIBLE
-        status.text = "v" + version + "　模式：" + TailnetController.describe(this)
+        status.text = "v" + version
 
         // 上次崩溃留下的痕迹：直接摊在界面上，省得让用户去捞 logcat
         CrashLog.take(this)?.let { trace ->
@@ -147,8 +141,6 @@ class MainActivity : AppCompatActivity() {
             android.util.Log.w("DshPocket", "上次崩溃: " + trace)
         }
 
-        findViewById<Button>(R.id.tunnel).setOnClickListener { toggleTunnel() }
-        findViewById<Button>(R.id.login).setOnClickListener { openLogin() }
         findViewById<Button>(R.id.detect).setOnClickListener { detect() }
 
         // 已经配过就直接进
@@ -231,164 +223,11 @@ class MainActivity : AppCompatActivity() {
         bridge.startWatch(target)
     }
 
-    // ── 内置 Tailscale ────────────────────────────────────────────────
-
-    private val main = Handler(Looper.getMainLooper())
-
-    /** 已经给用户看过的授权链接：同一条不重复加载（重复加载 = 每次重新生成 node key）。 */
-    private var loginShownUrl: String? = null
-
-    /** 自动弹登录页只弹一次，之后由用户点「登录 TAILSCALE」。 */
-    private var loginAutoShown = false
-
-    /**
-     * 一键隧道：引擎 → VPN 授权 → 后台建连 → 在 tailnet 里找电脑 → 打开它。
-     *
-     * 这条路和参考实现一致：引擎跑在本进程里，VpnService 只承载本 App 的流量，
-     * 所以「不在同一局域网」靠的是 WireGuard 打洞/DERP 中继，而不是端口映射。
-     */
-    private fun toggleTunnel() {
-        if (Tailnet.isRunning()) {
-            Tailnet.setWantRunning(false)
-            TailnetService.stop(this)
-            status.visibility = View.VISIBLE
-            status.text = "隧道已停止（回到局域网模式）"
-            return
-        }
-        Tailnet.unsupportedAbi()?.let { abis ->
-            status.visibility = View.VISIBLE
-            status.text = "这台设备的 CPU 架构（$abis）不在内置引擎的打包范围内，用局域网/中继模式"
-            return
-        }
-        if (Tailnet.ensureEngine(this) == null) {
-            status.visibility = View.VISIBLE
-            status.text = "引擎启动失败：看 adb logcat -s DshPocket"
-            return
-        }
-        val consent = VpnService.prepare(this)
-        if (consent != null) {
-            startActivityForResult(consent, VPN_REQUEST)
-            return
-        }
-        startTunnel()
-    }
-
-    private fun startTunnel() {
-        TailnetService.start(this)
-        Tailnet.setWantRunning(true)
-        status.visibility = View.VISIBLE
-        status.text = "隧道启动中…"
-        pollTunnel(0)
-    }
-
-    private fun pollTunnel(tries: Int) {
-        io.execute {
-            val state = Tailnet.backendState()
-            val needLogin = Tailnet.needsLogin()
-            runOnUiThread {
-                status.visibility = View.VISIBLE
-                status.text = "隧道：" + (if (state.isEmpty()) "启动中" else state)
-                when {
-                    state == "Running" -> discoverAndLoad()
-                    needLogin && tries > 2 && !loginAutoShown -> {
-                        loginAutoShown = true
-                        openLogin()
-                    }
-                    
-                    tries < 25 -> main.postDelayed({ pollTunnel(tries + 1) }, 1200)
-                    else -> status.text = "隧道没能起来（" + (if (state.isEmpty()) "无响应" else state) + "）"
-                }
-            }
-        }
-    }
-
-    /**
-     * 登录期间的后台守望：每 2 秒问一次后端状态，一旦 Running 就自动发现并打开 DSH。
-     * 用户此时在浏览器里操作，App 可能已经不在前台，所以这里不依赖界面回调。
-     */
-    private fun watchLogin(tries: Int) {
-        if (tries > 150) return // 5 分钟
-        io.execute {
-            val state = Tailnet.backendState()
-            if (state == "Running") {
-                runOnUiThread {
-                    status.visibility = View.VISIBLE
-                    status.text = "已登录，正在找电脑…"
-                    discoverAndLoad()
-                }
-                return@execute
-            }
-            main.postDelayed({ watchLogin(tries + 1) }, 2000)
-        }
-    }
-
-    /** 交互式登录：把授权页交给系统浏览器，登录完引擎会自己转 Running。 */
-    private fun openLogin() {
-        io.execute {
-            status.post { status.visibility = View.VISIBLE; status.text = "正在取登录地址…" }
-            val url = Tailnet.awaitAuthUrl()
-            runOnUiThread {
-                if (url.isEmpty()) {
-                    status.visibility = View.VISIBLE
-                    status.text = "拿不到登录地址：先点「启动隧道」，或看 logcat"
-                } else if (url != loginShownUrl) {
-                    // **必须交给系统浏览器**：Google/Microsoft 明确禁止 WebView 内做 OAuth
-                    // （disallowed_useragent），在 WebView 里点「Sign in with Google」是死的。
-                    // 登录成功后控制面会把这个节点的 node key 标成已授权，引擎自己会转 Running，
-                    // 不需要回调 —— 所以用浏览器登录完全可行。
-                    loginShownUrl = url
-                    status.visibility = View.VISIBLE
-                    status.text = "已在浏览器打开 Tailscale 登录页，登录完成后 App 会自动连上"
-                    try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                    } catch (err: Throwable) {
-                        status.text = "打不开浏览器：" + (err.message ?: err.javaClass.simpleName)
-                    }
-                    // 浏览器在后台完成登录，这里持续盯着状态
-                    watchLogin(0)
-                }
-            }
-        }
-    }
-
-    /**
-     * tailnet 里找那台电脑：逐个探对端的 3081 端口，谁回 health 就是它。
-     * 只探在线 peer，且限 100.x，避免把手机自己的出口也扫一遍。
-     */
-    private fun discoverAndLoad() {
-        val peers = Tailnet.peerAddresses()
-        status.text = "隧道已连，正在找电脑…（" + peers.size + " 个在线节点）"
-        io.execute {
-            for (ip in peers) {
-                val base = "http://" + ip + ":" + DEFAULT_PORT + "/__pocket__/"
-                if (probe(base)) {
-                    runOnUiThread { connect(base) }
-                    return@execute
-                }
-            }
-            runOnUiThread {
-                status.visibility = View.VISIBLE
-                status.text = "隧道通了，但没找到开着 dsh-pocket 的电脑（检查电脑端 Tailscale 是否登录）"
-            }
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == VPN_REQUEST) {
-            if (resultCode == RESULT_OK) startTunnel()
-            else {
-                status.visibility = View.VISIBLE
-                status.text = "没给 VPN 权限，内置隧道用不了（可以继续用局域网 / 中继）"
-            }
-        }
-    }
-
     /**
      * 「测试」：不做连接，只回答「现在到底卡在哪」。
      *
      * 之所以要它：WebView 只会说「网页无法打开」，而我们的失败有五种完全不同的原因
-     * （没在跑 / 端口错 / 不同网段 / 防火墙 / Tailscale 没连），必须一次说清。
+     * （没在跑 / 端口错 / 不同网段 / 防火墙 / 隧道没开），必须一次说清。
      */
     private fun probeNow() {
         val base = normalize(urlField.text.toString()) ?: run {
@@ -418,7 +257,7 @@ class MainActivity : AppCompatActivity() {
             val ms = System.currentTimeMillis() - startedAt
             runOnUiThread {
                 status.visibility = View.VISIBLE
-                status.text = result + "　(" + ms + " ms)　模式：" + TailnetController.describe(this)
+                status.text = result + "　(" + ms + " ms)"
             }
         }
     }

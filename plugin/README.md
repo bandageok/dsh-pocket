@@ -35,7 +35,7 @@ dsh plugin --profile web add /path/to/dsh-pocket/plugin
 ```
 ┌─ dsh-pocket ────────────────────────────────────────────────
 │ 手机端：http://192.168.1.9:3081/__pocket__/
-│ 隧道：http://100.101.102.103:3081/__pocket__/（Tailscale 地址，不在同一 WiFi 时用）
+│ 外面：https://xxx.trycloudflare.com/__pocket__/（电脑上跑 scripts/outside-tunnel.ps1 得到）
 │ 配对码：483920   ·  审批仅展示
 │ 完整界面：http://192.168.1.9:3081/?pocket=<配对后的令牌>
 └─────────────────────────────────────────────────────────────

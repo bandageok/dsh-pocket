@@ -2,6 +2,40 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号暂时跟 SemVer。
 
+## [0.4.0] — 2026-11-05
+
+### 移除：整套 Tailscale（代码 / 原生库 / 脚本 / Manifest 组件）
+
+内置 Tailscale 在真实环境里被证明是错的选择：这台 Windows 上 `tailscaled` 的服务后端
+根本起不来（`creating dns cleanup: Invalid class string`，卸载重装无效），等于每台电脑都要
+先修系统才能用；手机端还要背 28 MB 原生库、申请 VPN 权限、处理各家前台服务限制。
+
+删掉的东西：
+
+- `android/app/src/main/java/.../net/`（`AppContextImpl` / `Tailnet` / `TailnetService`）
+- `TailnetController.kt`、`PocketVpnService.kt`、`ic_stat_tunnel.xml`
+- `android/app/libs/libtailscale.aar`（16.7 MB）、`android/engines/`
+- Manifest 里的两个 VPN 服务、`BIND_VPN_SERVICE`、`FOREGROUND_SERVICE_SYSTEM_EXEMPTED`
+- 脚本：`build-libtailscale` / `use-engine` / `fix-tailscale` / `reinstall-tailscale` /
+  `tailnet-userspace` / `tailnet-info` / `phone`
+- `docs/REVERSE-ENGINEERING.md`（那份逆向报告的唯一结论已经写进 README）
+
+**APK 从 28.7 MB 降到 3.3 MB，无原生库、无 VPN 权限。**
+
+### 保留并简化的能力
+
+- 地址栏 + **连接 / 测试** + 自动探测（归一化：裸 IP 自动补 `:3081`，脏值也能救回）
+- WebView 加载 PWA，`WatchService` 推「待审批 / 跑完了」通知
+- `CrashLog`（异常留痕，下次启动直接显示）、状态栏版本号
+- 插件 / 中继 / PWA 一行未动：52 + 4 + 72 全绿
+
+### 新增：跨网络改用电脑侧隧道
+
+`scripts/outside-tunnel.ps1`：Cloudflare 快速隧道把 `127.0.0.1:3081` 发布成公网 HTTPS 地址，
+打印地址与配对码；`-Status` 看当前地址，`-Install` 注册登录自启。
+实测（公网地址上）：health 200、配对拿 token、`/api/state` 54 个会话、未授权 401；
+真机 Redmi K60 Ultra 用该地址正常打开配对页。
+
 ## [0.3.3] — 2026-11-05
 
 ### 修复（真机 Redmi K60 Ultra / Android 16 实测，USB 直连逐项验证）

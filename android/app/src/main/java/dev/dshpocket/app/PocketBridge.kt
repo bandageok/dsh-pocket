@@ -34,8 +34,6 @@ class PocketBridge(private val activity: MainActivity, private val web: WebView)
         Notifier.post(activity, title, body)
     }
 
-    @JavascriptInterface
-    fun tailnet(): String = TailnetController.describe(activity)
 
     /** 从页面里把 PWA 存的令牌捞出来（PWA 把配置放在 localStorage 的 dshpocket.* 下）。 */
     fun adoptFromPage(view: WebView) {

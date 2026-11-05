@@ -52,32 +52,7 @@ Run Task → **⑧ 后端测试**：插件 52 条 + 手机端自检 72 项 + 中
    （任务 ⑤ 里写死了 `-s emulator-5554`，真机就把 `-s` 去掉或换成设备序列号）
 4. Run Task → **⑥ 看引擎日志**：`DshPocket` 是我们自己的日志，`Tailscale/gojni` 是引擎的
 
-## 五、引擎架构别装错（最常见的坑）
-
-`libgojni.so` 是按 CPU 架构编的。装错了，点「启动隧道」就崩（或者新版直接提示不支持）。
-
-| 目标 | 用哪份引擎 |
-|---|---|
-| 真机（几乎所有手机） | `arm64` |
-| Android 模拟器（x86_64 镜像） | `amd64` |
-
-切换：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\use-engine.ps1 -Abi arm64    # 或 amd64
-cd android; .\gradlew.bat assembleDebug
-```
-
-预编好的两份在 `android/engines/`（不入库）。缺了脚本会调 gomobile 现场编。
-
-**发布前必查**（我踩过一次，把 x86_64 的包发了出去）：
-
-```powershell
-unzip -l android/app/build/outputs/apk/debug/app-debug.apk | Select-String libgojni
-# 期望：lib/arm64-v8a/libgojni.so
-```
-
-## 六、两个 VS Code 相关的小坑
+## 五、两个 VS Code 相关的小坑
 
 - **PowerShell 脚本里的中文**：Windows PowerShell 5.1 按 ANSI 读 `.ps1`，中文注释会让它
   解析失败（报 `UnexpectedToken`）。仓库里的 `.ps1` 都是 **UTF-8 带 BOM**，改的时候别丢 BOM。
@@ -85,17 +60,12 @@ unzip -l android/app/build/outputs/apk/debug/app-debug.apk | Select-String libgo
 - **终端中文乱码**：git-bash 里 `node` 输出中文会变成 GBK 乱码，那是控制台编码，不是文件坏了。
   验证文件内容用 `node -e "console.log(require('fs').readFileSync('x','utf8'))"`。
 
-## 七、任务一览
+## 六、任务一览
 
 | 任务 | 干什么 |
 |---|---|
-| ① 构建 APK（arm64） | 切 arm64 引擎 + `assembleDebug` |
-| ② 构建 APK（x86_64） | 切 amd64 引擎 + `assembleDebug` |
-| ③ 启动模拟器 | 无窗口启动 AVD `dshpocket` |
-| ④ 等模拟器起来 | 轮询 `sys.boot_completed` |
-| ⑤ 安装并启动 App | `adb install` + `am start` |
-| ⑥ 看引擎日志 | `logcat -s DshPocket Tailscale/gojni` |
-| ⑦ 截图 | 存到 `shots/` |
+| ① 构建 APK | `assembleDebug` |
+| ⑥ 截图 | 存到 `shots/` |
 | ⑧ 后端测试 | 插件 + 手机端自检 + 中继 |
 | ⑨ 隧道模拟 | 真中继 + 真拨号 + 手机侧帧（需 `POCKET_TOKEN`） |
 | ⑩ 一键全流程 | ②③④⑤⑥ 串起来 |

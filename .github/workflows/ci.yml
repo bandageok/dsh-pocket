@@ -58,7 +58,6 @@ jobs:
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" > /dev/null
 
-      # libtailscale.aar 不入库（见 android/README.md）；这里编的是 LAN/SYSTEM 模式的壳
       - name: 构建
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug

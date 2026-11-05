@@ -172,20 +172,27 @@ cd plugin && node tools/standalone.mjs --dsh-port 3080 --token <launch token>
 
 `--token` 可以从 `dsh web` 的启动日志里抄：`http://127.0.0.1:3080/?token=…`。这样改一行代码就能看效果，不用重启 dsh。
 
-## 参考实现与「跨网络」的真相
+## 「在外面」怎么连
 
-「不在同一局域网也能连」不是魔法：[docs/REVERSE-ENGINEERING.md](docs/REVERSE-ENGINEERING.md)
-拆了参考实现 DSHgo v1.3 的 APK（含 `libgojni.so` 的 105 个 JNI 符号），结论是它把
-**Tailscale 客户端引擎整个编进了 APK**（35 MB .so），穿透能力来自 Tailscale，不来自那个 App。
+不在同一局域网时，**在电脑侧**把插件发布成一个公网 HTTPS 地址（Cloudflare 隧道，零账号零管理员）：
 
-我们的三条路按「今天能不能用」排序：
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\outside-tunnel.ps1
+```
 
-| 路线 | 需要 | 状态 |
-|---|---|---|
-| 局域网直连 | 同一 WiFi | 已实测 |
-| 官方 Tailscale（两端） | 一个 Tailscale 账号 | 可用（APK 自动进入 SYSTEM 模式） |
-| 自建中继 | 一台有公网 IP 的机器跑 `relay/server.mjs` | 已实测（tunnel-sim） |
-| 内置 Tailscale 引擎 | 装 0.3.0 的 APK，点「启动隧道」 | ✅ 已内置（`gomobile bind` 自建 AAR，见 [THIRD-PARTY.md](THIRD-PARTY.md)） |
+它会打印形如 `https://xxx.trycloudflare.com/__pocket__/` 的地址与配对码，手机填这个地址即可。
+实测：公网 `health` 200、配对拿 token、`/api/state` 返回全部会话、未授权 401。
+地址每次重启会变（当前值在 `%LOCALAPPDATA%\DshPocket\public-url.txt`），`-Install` 可注册登录自启。
+
+### 为什么不做内置 Tailscale（曾经的方案，已移除）
+
+参考实现 DSHgo 的做法是把 Tailscale 的 Go 引擎（33 MB `libgojni.so`）编进 APK，
+手机端自己当 tailnet 节点。我照这个思路做过一版（`gomobile bind` 自建 AAR、
+实现 `AppContext`/`IPNService`/`VPNServiceBuilder`、走 localapi 登录），但在这台 Windows 上
+**服务后端根本起不来**（`creating dns cleanup: Invalid class string`，卸载重装无效），
+等于每台机器都要先修 Windows 才能用。相比之下，隧道放在电脑侧、手机按普通 HTTPS 地址连，
+不依赖任何 VPN 驱动、不需要管理员、也不给手机加 VPN 权限。所以 0.4.0 把它整套删了：
+代码、AAR、脚本、Manifest 里的 VPN 服务与权限。
 
 ## 已知限制（诚实清单）
 
