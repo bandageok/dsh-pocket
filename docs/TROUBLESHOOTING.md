@@ -194,3 +194,26 @@ Google 明确禁止在 WebView 里做 OAuth（`disallowed_useragent`）。所以
 
 另外：不要反复调 `login-interactive` —— 每次调用都会**重新生成 node key**，
 旧链接立刻失效，页面会报 `Error 400 — missing machine key`。App 里已改成只踢一次。
+
+## 「在外面操控」的推荐路线（实测可用，2026-11-05）
+
+**结论：用 Cloudflare 快速隧道，不要用 Tailscale。** 这台 Windows 上 Tailscale 的服务后端
+起不来（`creating dns cleanup: Invalid class string` → 托盘 "Failed connecting to the Tailscale
+service"、CLI 503 no backend，卸载重装无效），属于系统 COM 组件损坏，不是配置问题。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts	unnel-outside.ps1          # 起隧道，打印地址+配对码
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts	unnel-outside.ps1 -Status # 只看当前地址
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts	unnel-outside.ps1 -Install # 登录自启
+```
+
+实测（公网地址上）：`health` 200、配对拿 token、`/api/state` 返回 54 个会话、
+未授权 401。手机在 5G 下打开 `https://<随机>.trycloudflare.com/__pocket__/` 即可。
+
+注意事项：
+- **地址每次重启隧道都会变**，当前值保存在 `%LOCALAPPDATA%\DshPocket\public-url.txt`；
+- 流量经 Cloudflare **明文转发**，安全边界是插件的配对码 + 设备令牌（不是端到端加密）；
+- 长期稳定用的话换成带域名 + Cloudflare Access 的**命名隧道**（需要 Cloudflare 账号）；
+- 这台机器上 `Invoke-RestMethod` 访问公网 HTTPS 会卡在证书吊销检查（连不上微软 CRL），
+  脚本里已改用 `curl.exe --ssl-no-revoke`。
+
