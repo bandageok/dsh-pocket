@@ -142,7 +142,7 @@ dsh --profile web --no-open 2>&1 | tee /tmp/dsh-web.log
 
 1. **电脑上到底在不在 tailnet**
    ```powershell
-   pwsh scripts/tailnet-info.ps1
+   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\tailnet-info.ps1
    ```
    没装 → `winget install --id Tailscale.Tailscale`；装了但没登录 → 点托盘图标 → *Log in…*。
    它会直接打印手机该填的地址 `http://100.x.y.z:3081/__pocket__/`。
@@ -180,7 +180,10 @@ creating dns cleanup: Invalid class string
 `\\.\pipe\ProtectedPrefix\Administrators\Tailscale\tailscaled`，这时任何 CLI 命令都连不上，
 GUI 的 Log in 也没有反应。
 
-一键修：`pwsh scripts/fix-tailscale.ps1`（自带提权：重启服务 → 等管道 → 取授权链接 →
+> 这台机器**没装 PowerShell 7**（没有 `pwsh`），一律用自带的 5.1：
+> `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\fix-tailscale.ps1 -NoElevate`，或直接双击 `scripts\fix-tailscale.cmd`。
+
+一键修：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts\fix-tailscale.ps1`（自带提权：重启服务 → 等管道 → 取授权链接 →
 开浏览器 → 登录后打印 100.x 与插件连通性）。仍不行就重启一次机器，再跑该脚本。
 
 ## 手机端点「Sign in with Google」没反应

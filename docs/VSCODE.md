@@ -64,7 +64,7 @@ Run Task → **⑧ 后端测试**：插件 52 条 + 手机端自检 72 项 + 中
 切换：
 
 ```powershell
-pwsh scripts/use-engine.ps1 -Abi arm64    # 或 amd64
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\use-engine.ps1 -Abi arm64    # 或 amd64
 cd android; .\gradlew.bat assembleDebug
 ```
 
