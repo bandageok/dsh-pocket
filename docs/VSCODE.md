@@ -70,6 +70,13 @@ cd android; .\gradlew.bat assembleDebug
 
 预编好的两份在 `android/engines/`（不入库）。缺了脚本会调 gomobile 现场编。
 
+**发布前必查**（我踩过一次，把 x86_64 的包发了出去）：
+
+```powershell
+unzip -l android/app/build/outputs/apk/debug/app-debug.apk | Select-String libgojni
+# 期望：lib/arm64-v8a/libgojni.so
+```
+
 ## 六、两个 VS Code 相关的小坑
 
 - **PowerShell 脚本里的中文**：Windows PowerShell 5.1 按 ANSI 读 `.ps1`，中文注释会让它
