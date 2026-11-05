@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -31,6 +32,11 @@ import java.util.concurrent.Executors
  * 又会立刻和插件的协议漂移。原生壳的价值在系统集成，不在画界面。
  */
 class MainActivity : AppCompatActivity() {
+
+    private companion object {
+        /** 插件的默认端口；用户只填 IP 时补它，否则会去连 80 端口。 */
+        const val DEFAULT_PORT = 3081
+    }
 
     private lateinit var web: WebView
     private lateinit var urlField: EditText
@@ -73,6 +79,15 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                // 主文档失败才提示；子资源失败（图标之类）不打扰用户
+                if (!request.isForMainFrame) return
+                val host = Uri.parse(request.url.toString()).host ?: "地址"
+                val why = error.description?.toString() ?: "网络错误"
+                status.visibility = View.VISIBLE
+                status.text = "连不上 " + host + "：" + why + "　（检查：是否同一网络 / 地址里的端口）"
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 // PWA 把令牌放在 localStorage；桥只取用，不落盘
@@ -84,22 +99,42 @@ class MainActivity : AppCompatActivity() {
         web.addJavascriptInterface(bridge, "PocketNative")
 
         findViewById<Button>(R.id.connect).setOnClickListener { connect(urlField.text.toString()) }
+        findViewById<Button>(R.id.probe).setOnClickListener { probeNow() }
         findViewById<Button>(R.id.detect).setOnClickListener { detect() }
 
         // 已经配过就直接进
         if (!saved.isNullOrBlank()) connect(saved)
     }
 
-    /** 归一化用户输入的地址：允许只填 IP，自动补 scheme 与 __pocket__/ 挂载点。 */
+    /**
+     * 归一化用户输入的地址。
+     *
+     * 三个真实踩过的坑，全在这里兜住：
+     *   1. 只填 IP（最常见）→ 必须补 **:3081**。不补就会去连 80 端口，
+     *      WebView 只会显示「网页无法打开」——用户完全看不出是端口错了。
+     *   2. https + 域名（cloudflared / 反代）→ **不能**补 3081，443 就是对的。
+     *   3. 只填到根路径 → 补 `/__pocket__/` 挂载点。
+     */
     private fun normalize(raw: String): String? {
         var text = raw.trim()
         if (text.isEmpty()) return null
         if (!text.startsWith("http://") && !text.startsWith("https://")) text = "http://$text"
-        val withMount = if (text.contains("/__pocket__")) text else text.trimEnd('/') + "/__pocket__/"
-        return try {
-            URL(withMount).toString()
-        } catch (_: Exception) {
-            null
+        val uri = Uri.parse(text)
+        val host = uri.host ?: return null
+        val scheme = uri.scheme ?: "http"
+        val looksLikeLiteral = host == "localhost" || host.matches(Regex("^[0-9.]+$")) || host.startsWith("[")
+        val port = when {
+            uri.port > 0 -> uri.port
+            scheme == "https" -> -1            // 走默认 443，别乱加端口
+            looksLikeLiteral -> DEFAULT_PORT   // 局域网/tailnet 的裸 IP
+            else -> -1
+        }
+        val tail = uri.encodedPath?.takeIf { it.contains("__pocket__") } ?: "/__pocket__/"
+        val withSlash = if (tail.endsWith("/")) tail else "$tail/"
+        return buildString {
+            append(scheme).append("://").append(host)
+            if (port > 0) append(":").append(port)
+            append(withSlash)
         }
     }
 
@@ -113,6 +148,45 @@ class MainActivity : AppCompatActivity() {
         status.text = "连接 " + Uri.parse(target).host + " …"
         web.loadUrl(target)
         bridge.startWatch(target)
+    }
+
+    /**
+     * 「测试」：不做连接，只回答「现在到底卡在哪」。
+     *
+     * 之所以要它：WebView 只会说「网页无法打开」，而我们的失败有五种完全不同的原因
+     * （没在跑 / 端口错 / 不同网段 / 防火墙 / Tailscale 没连），必须一次说清。
+     */
+    private fun probeNow() {
+        val base = normalize(urlField.text.toString()) ?: run {
+            status.text = "地址不合法"; return
+        }
+        status.text = "测试 " + Uri.parse(base).host + " …"
+        io.execute {
+            val startedAt = System.currentTimeMillis()
+            val result = try {
+                val conn = URL(base.trimEnd('/') + "/health").openConnection() as HttpURLConnection
+                conn.connectTimeout = 4000
+                conn.readTimeout = 4000
+                val code = conn.responseCode
+                val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                    ?.bufferedReader()?.use { it.readText() } ?: ""
+                conn.disconnect()
+                "HTTP $code " + body.take(80)
+            } catch (err: Throwable) {
+                val kind = when {
+                    err is java.net.SocketTimeoutException -> "超时（手机连不到这台电脑：不同网段 / 防火墙 / 隧道没开）"
+                    err is java.net.ConnectException -> "拒绝连接（端口没开：插件没跑？端口不是 3081？）"
+                    err is java.net.UnknownHostException -> "域名解析失败（地址写错了？）"
+                    else -> (err.message ?: err.javaClass.simpleName)
+                }
+                "失败：" + kind
+            }
+            val ms = System.currentTimeMillis() - startedAt
+            runOnUiThread {
+                status.visibility = View.VISIBLE
+                status.text = result + "　(" + ms + " ms)　模式：" + TailnetController.describe(this)
+            }
+        }
     }
 
     /**

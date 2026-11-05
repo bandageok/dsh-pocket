@@ -4,4 +4,5 @@
     <string name="url_hint">电脑地址，例如 http://100.101.102.103:3081/__pocket__/</string>
     <string name="connect">连接</string>
     <string name="detect">自动探测</string>
+    <string name="probe">测试</string>
 </resources>
