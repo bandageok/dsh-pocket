@@ -23,6 +23,8 @@ const RESOLVED_KEEP = 20;
 const MIME = {
   'index.html': 'text/html; charset=utf-8',
   'app.js': 'text/javascript; charset=utf-8',
+  'markdown.js': 'text/javascript; charset=utf-8',
+  'views.js': 'text/javascript; charset=utf-8',
   'style.css': 'text/css; charset=utf-8',
   'sw.js': 'text/javascript; charset=utf-8',
   'manifest.webmanifest': 'application/manifest+json; charset=utf-8',
@@ -489,6 +491,39 @@ export function createPocket(options) {
     }
 
     // ── 诊断（只有数字码，可以整包导出） ──────────────────────────────
+    // 能力探测：**真的去问后端**有哪些 RPC 方法可用，不猜、不编。
+    // 手机端要展示「模型 / MCP / 工具」这些设置项，但 dsh 未必暴露对应接口 ——
+    // 与其编一堆假模型卡片，不如把「探到了什么」如实返回给前端。
+    if (path === `${MOUNT}/api/capabilities` && method === 'GET') {
+      const candidates = [
+        ['session/list', { _request: {} }],
+        ['provider/list', {}],
+        ['model/list', {}],
+        ['models/list', {}],
+        ['mcp/list', {}],
+        ['mcp/server/list', {}],
+        ['tool/list', {}],
+        ['tools/list', {}],
+        ['skill/list', {}],
+        ['settings/get', {}],
+        ['config/get', {}],
+        ['agent/list', {}],
+        ['runtime/info', {}],
+      ];
+      const out = [];
+      for (const [method, args] of candidates) {
+        const startedAt = Date.now();
+        const res = await upstream.rpc(method, args);
+        out.push({
+          method,
+          ok: Boolean(res.ok),
+          ms: Date.now() - startedAt,
+          error: res.ok ? null : (res.error?.code || 'error'),
+        });
+      }
+      return json(res, 200, { probedAt: Date.now(), methods: out });
+    }
+
     if (path === `${MOUNT}/api/diag` && method === 'GET') {
       if (!diag) {
         json(res, 404, { error: 'not-found' });

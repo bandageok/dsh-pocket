@@ -16,6 +16,10 @@ import { fileURLToPath } from 'node:url';
 
 const PWA = join(dirname(dirname(fileURLToPath(import.meta.url))), 'lib', 'pwa') + '/';
 const src = fs.readFileSync(join(PWA, 'app.js'), 'utf8');
+// 富文本渲染器也跑一遍：气泡现在走 markdown.js 的 renderMarkdown / bubbleContent
+const mdSrc = fs.readFileSync(join(PWA, 'markdown.js'), 'utf8');
+// 视图层（Home/Tasks/能力探测）也一起跑，id 互查要算上它
+const viewsSrc = fs.readFileSync(join(PWA, 'views.js'), 'utf8');
 const html = fs.readFileSync(join(PWA, 'index.html'), 'utf8');
 
 /* ───────── 最小 DOM ───────── */
@@ -107,6 +111,12 @@ const document = {
   },
   createElement(tag) { return makeEl(tag); },
   createTextNode(v) { return makeText(v); },
+  // Fragment：markdown.js 用它拼块级节点，stub 里给一个 ntype=11 的容器即可
+  createDocumentFragment() {
+    const frag = makeEl('#fragment');
+    frag.nodeType = 11;
+    return frag;
+  },
   querySelector(sel) { return document.body.querySelector(sel); },
   querySelectorAll() { return []; },
   addEventListener() {},
@@ -264,6 +274,8 @@ globalThis.__T = {
   syncFromHash, showView, updateDetail, findSession, write
 };
 `;
+vm.runInContext(mdSrc, ctx, { filename: 'markdown.js' });
+vm.runInContext(viewsSrc, ctx, { filename: 'views.js' });
 vm.runInContext(src + tail, ctx, { filename: 'app.js' });
 const T = ctx.__T;
 
@@ -478,10 +490,15 @@ console.log('\n[14] index.html ↔ app.js id 互查');
 const htmlIds = [...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
 const dollar = [...src.matchAll(/\$\('([^']+)'\)/g)].map((m) => m[1]);
 const bound = [...src.matchAll(/on\('([^']+)',/g)].map((m) => m[1]);
-const used = new Set(dollar.concat(bound));
-const missing = [...used].filter((id) => htmlIds.indexOf(id) < 0);
+const viewDollar = [...viewsSrc.matchAll(/\$\('([^']+)'\)/g)].map((m) => m[1]);
+const viewGid = [...viewsSrc.matchAll(/getElementById\('([^']+)'\)/g)].map((m) => m[1]);
+const used = new Set(dollar.concat(bound, viewDollar, viewGid));
+const DYNAMIC = ['capList']; // views.js 模板里现生成的
+const missing = [...used].filter((id) => htmlIds.indexOf(id) < 0 && DYNAMIC.indexOf(id) < 0);
 ok('app.js 引用的 id 都在 html 里', missing.length === 0, missing);
-const unused = htmlIds.filter((id) => !used.has(id) && id !== 'app' && id.indexOf('view-') !== 0 && !/-dot$/.test(id));
+// 外壳容器（mockup 结构）与 views.js 动态生成的节点不参与「无人引用」检查
+const SHELL_IDS = ['app', 'appbar', 'main', 'nav', 'scrim', 'sheet', 'legacy-host', 'connect-mark'];
+const unused = htmlIds.filter((id) => !used.has(id) && SHELL_IDS.indexOf(id) < 0 && id.indexOf('view-') !== 0 && !/-dot$/.test(id));
 ok('html 没有无人引用的 id', unused.length === 0, unused);
 const fresh = ['detail-upload', 'detail-file', 'detail-cache-note', 'detail-live-note', 'detail-sync-off', 'detail-transcript', 'detail-transcript-empty', 'set-probe', 'set-diag'];
 ok('新增 id 两侧都在', fresh.every((id) => htmlIds.indexOf(id) >= 0 && used.has(id)), fresh.filter((id) => htmlIds.indexOf(id) < 0 || !used.has(id)));
@@ -498,6 +515,62 @@ for (const p of ['api/prompt', 'api/state', 'api/cancel', 'api/approval', 'api/d
 ok('没有 innerHTML 赋值', !/\.innerHTML\s*=/.test(src));
 ok('没有 insertAdjacentHTML', src.indexOf('insertAdjacentHTML') < 0);
 ok('没有写死 IP/端口', !/127\.0\.0\.1:\d{4}/.test(src) && !/192\.168\./.test(src));
+
+/* [16] Markdown 渲染：结构正确 + 危险链接不生成 <a> */
+function serialize(node) {
+  if (!node) return "";
+  if (node.nodeType === 3) {
+    return String(node.textContent || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  if (node.nodeType === 11) return Array.from(node.children || node.childNodes || []).map(serialize).join("");
+  const tag = node.tagName ? node.tagName.toLowerCase() : "node";
+  const cls = node.className ? ' class="' + node.className + '"' : "";
+  const href = node.getAttribute && node.getAttribute("href") ? ' href="' + node.getAttribute("href") + '"' : "";
+  const kids = Array.from(node.children || node.childNodes || []);
+  const esc = (v) => String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  if (!kids.length) return "<" + tag + cls + href + ">" + esc(node.textContent) + "</" + tag + ">";
+  return "<" + tag + cls + href + ">" + kids.map(serialize).join("") + "</" + tag + ">";
+}
+
+console.log("\n[16] Markdown 渲染");
+{
+  const sample = [
+    "# 标题",
+    "",
+    "段落里有 **粗体**、`行内代码` 和 [链接](https://example.com)。",
+    "",
+    "- 列表一",
+    "- 列表二",
+    "",
+    "```js",
+    "const a = 1 < 2;",
+    "```",
+    "",
+    "| 列A | 列B |",
+    "| --- | --- |",
+    "| 1 | 2 |",
+    "",
+    "> 引用",
+    "",
+    "危险链接：[点我](javascript:alert(1))",
+  ].join("\n");
+
+  const html = serialize(ctx.renderMarkdown(sample));
+  ok("Markdown 标题", html.indexOf("md-h md-h1") >= 0 && html.indexOf("标题") >= 0, html.slice(0, 100));
+  ok("Markdown 粗体", html.indexOf("<strong>粗体</strong>") >= 0);
+  ok("Markdown 行内代码", html.indexOf("<code>行内代码</code>") >= 0);
+  ok("Markdown 链接", html.indexOf('href="https://example.com"') >= 0);
+  ok("Markdown 列表", (html.match(/<li>/g) || []).length >= 2);
+  ok("Markdown 代码块", html.indexOf("md-pre") >= 0 && html.indexOf("const a = 1 &lt; 2;") >= 0, html.slice(0, 200));
+  ok("Markdown 表格", html.indexOf("md-table") >= 0 && html.indexOf("<th>列A</th>") >= 0);
+  ok("Markdown 引用", html.indexOf("md-quote") >= 0);
+  ok("javascript: 不生成 href", html.indexOf('href="javascript') < 0, html);
+  ok("markdown.js 不写 innerHTML", !/\.innerHTML\s*=/.test(mdSrc));
+
+  const userBubble = ctx.bubbleContent({ role: "user", text: "**不要加粗**" });
+  ok("用户气泡保持纯文本", userBubble.textContent === "**不要加粗**", userBubble.textContent);
+}
+
 
 console.log('\n' + (fails.length ? 'FAIL ' + fails.length + ' / ' + count : 'PASS ' + count + ' / ' + count));
 if (fails.length) { for (const f of fails) console.log('  - ' + f); process.exitCode = 1; }

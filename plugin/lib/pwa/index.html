@@ -1,194 +1,147 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#0f1115" />
-<meta name="color-scheme" content="dark light" />
+<meta name="theme-color" content="#F7F9FC" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0B1220" media="(prefers-color-scheme: dark)" />
+<meta name="color-scheme" content="light dark" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-title" content="Pocket" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="DSH" />
 <meta name="format-detection" content="telephone=no" />
-<title>DSH Pocket</title>
+<title>DSH Mobile — DeepSeek Intelligence</title>
 <link rel="manifest" href="./manifest.webmanifest" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f1115'/%3E%3Ctext x='32' y='44' font-family='system-ui,sans-serif' font-size='34' font-weight='700' fill='%234d6bfe' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E" />
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f1115'/%3E%3Ctext x='32' y='44' font-family='system-ui,sans-serif' font-size='34' font-weight='700' fill='%234d6bfe' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23123B72'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%2349B7E8'/%3E%3Ccircle cx='16' cy='16' r='9.5' fill='none' stroke='%23EAF3FF' stroke-width='1.2' stroke-dasharray='3 3'/%3E%3C/svg%3E" />
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23123B72'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%2349B7E8'/%3E%3Ccircle cx='16' cy='16' r='9.5' fill='none' stroke='%23EAF3FF' stroke-width='1.2' stroke-dasharray='3 3'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
 
-<div id="app">
+<div class="phone" id="app">
   <noscript><p class="boot-note">这个页面需要开启 JavaScript。</p></noscript>
 
-  <!-- ─────────── A. 连接屏（未持有 token） ─────────── -->
-  <section id="view-connect" class="view" aria-label="连接">
-    <header class="brand">
-      <h1>DSH Pocket</h1>
-      <p class="muted">把手机连到桌面上的 dsh</p>
-    </header>
+  <!-- 顶栏 / 主区 / 底栏：全部由 views.js 按真实状态渲染 -->
+  <header class="appbar" id="appbar"></header>
+  <main class="main" id="main"></main>
+  <nav class="bottomnav" id="nav"></nav>
 
-    <form id="pair-form" class="card" autocomplete="off">
-      <label class="field">
-        <span class="field-label">服务器地址</span>
-        <input id="pair-base" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
-               spellcheck="false" placeholder="http://…" />
-      </label>
+  <div class="scrim" id="scrim"></div>
+  <div class="sheet" id="sheet"></div>
+  <div class="toast" id="toast"></div>
+</div>
 
-      <label class="field">
-        <span class="field-label">配对码</span>
-        <input id="pair-code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
-               autocomplete="one-time-code" placeholder="000000" class="code-input" />
-      </label>
-
-      <label class="field">
-        <span class="field-label">设备名</span>
-        <input id="pair-name" type="text" maxlength="32" autocomplete="off" />
-      </label>
-
-      <button id="pair-submit" class="btn primary block" type="submit">配对</button>
-      <p id="pair-error" class="error" role="alert" hidden></p>
-      <p class="hint">配对码在电脑上 <code>dsh web</code> 启动日志里，或插件打印的日志里</p>
-    </form>
-  </section>
-
-  <!-- ─────────── B. 会话列表 ─────────── -->
-  <section id="view-list" class="view" hidden aria-label="会话列表">
-    <header class="statusbar">
-      <span class="dot" id="list-dot" data-link="down" aria-hidden="true"></span>
-      <div class="status-meta">
-        <span id="list-host" class="status-host">—</span>
-        <span id="list-link" class="status-link">断线</span>
-      </div>
-      <button id="list-refresh" class="btn icon" type="button" aria-label="刷新">⟳</button>
-      <button id="list-settings" class="btn icon" type="button" aria-label="设置">⚙</button>
-    </header>
-
-    <div id="list-banner" class="banner" hidden></div>
-
-    <div class="list-body">
-      <p id="list-empty" class="empty" hidden>
-        在电脑上开一个会话，或在下面的输入框直接给最新会话发指令
-      </p>
-      <ul id="list-cards" class="cards"></ul>
+<!-- ══════════════════════════════════════════════════════════════════
+     连接屏：唯一保留的静态结构（表单需要真实 input，便于自动填充/键盘）
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="view-connect" class="view-connect" hidden aria-label="连接">
+  <div class="connect-wrap">
+    <div class="connect-brand">
+      <span id="connect-mark"></span>
+      <h1>DSH</h1>
+      <p>DeepSeek Harness · 手机端</p>
     </div>
 
-    <form id="quick-form" class="quickbar" autocomplete="off">
-      <input id="quick-input" type="text" placeholder="快速指令…" enterkeyhint="send" />
-      <button id="quick-send" class="btn primary" type="submit">发送</button>
-    </form>
-  </section>
-
-  <!-- ─────────── C. 会话详情 ─────────── -->
-  <section id="view-detail" class="view" hidden aria-label="会话详情">
-    <header class="statusbar">
-      <button id="detail-back" class="btn icon" type="button" aria-label="返回">←</button>
-      <div class="status-meta">
-        <span id="detail-title" class="status-host">—</span>
-        <span id="detail-sub" class="status-link">—</span>
-      </div>
-      <span class="dot" id="detail-dot" data-link="down" aria-hidden="true"></span>
-    </header>
-
-    <div class="detail-body">
-      <!-- 转录：会话内容本身。先出缓存再拉网；SSE 的 reset / message / delta 在 app.js 里落进来。 -->
-      <div class="section transcript-wrap">
-        <div class="transcript-head">
-          <span class="field-label">对话</span>
-          <button id="detail-upload" class="btn ghost small" type="button">＋ 文件</button>
-          <input id="detail-file" type="file" hidden />
-        </div>
-        <p id="detail-cache-note" class="muted small note" hidden></p>
-        <p id="detail-live-note" class="muted small note" hidden></p>
-        <p id="detail-sync-off" class="muted small note" hidden>这台电脑没启用内容同步</p>
-        <ul id="detail-transcript" class="transcript"></ul>
-        <p id="detail-transcript-empty" class="empty small" hidden>这个会话还没有消息内容</p>
-      </div>
-
-      <div id="detail-approvals" class="section"></div>
-
-      <div class="section composer">
-        <textarea id="detail-text" rows="3" placeholder="给这个会话发指令…（Ctrl/⌘+Enter 发送）"></textarea>
-        <div class="composer-actions">
-          <button id="detail-queue" class="btn primary" type="button">发送</button>
-          <button id="detail-steer" class="btn" type="button">打断并插入</button>
-          <button id="detail-cancel" class="btn danger" type="button">停止</button>
-        </div>
-        <button id="detail-gui" class="btn ghost block" type="button">打开完整界面 ↗</button>
-      </div>
-
-      <div class="section">
-        <button id="detail-log-toggle" class="btn ghost block" type="button" aria-expanded="false">
-          原始事件日志
-        </button>
-        <p id="detail-activity" class="muted">最近活动 —</p>
-        <ul id="detail-log" class="log" hidden></ul>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────── D. 设置 ─────────── -->
-  <section id="view-settings" class="view" hidden aria-label="设置">
-    <header class="statusbar">
-      <button id="set-back" class="btn icon" type="button" aria-label="返回">←</button>
-      <div class="status-meta"><span class="status-host">设置</span></div>
-      <span class="dot" id="set-dot" data-link="down" aria-hidden="true"></span>
-    </header>
-
-    <div class="settings-body">
-      <section class="card">
-        <h2 class="section-title">连接</h2>
+    <div class="card" style="display:flex;flex-direction:column;gap:14px">
+      <form id="pair-form" autocomplete="off" style="display:flex;flex-direction:column;gap:12px">
         <label class="field">
-          <span class="field-label">桌面地址</span>
-          <input id="set-base" type="url" inputmode="url" autocapitalize="off" spellcheck="false" />
+          <span class="field-label">服务器地址</span>
+          <input id="pair-base" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
+                 spellcheck="false" placeholder="http://…" />
+        </label>
+        <label class="field">
+          <span class="field-label">配对码</span>
+          <input id="pair-code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                 autocomplete="one-time-code" placeholder="000000" class="code-input" />
         </label>
         <label class="field">
           <span class="field-label">设备名</span>
-          <input id="set-name" type="text" maxlength="32" />
+          <input id="pair-name" type="text" maxlength="32" autocomplete="off" />
         </label>
-        <p class="static-row"><span class="field-label">token</span><code id="set-token" class="mono">—</code></p>
-        <button id="set-save" class="btn primary block" type="button">保存连接设置</button>
-        <button id="set-gui" class="btn ghost block" type="button">打开电脑端完整界面 ↗</button>
-      </section>
-
-      <section class="card">
-        <h2 class="section-title">中继</h2>
-        <p class="muted small">不在同一个网段时用。开启后所有请求走 WS，状态条会显示「轮询降级」（中继没有 SSE）。</p>
-        <label class="field">
-          <span class="field-label">中继地址</span>
-          <input id="set-relay" type="url" inputmode="url" autocapitalize="off" spellcheck="false"
-                 placeholder="wss://relay.example.com" />
-        </label>
-        <label class="field">
-          <span class="field-label">房间号</span>
-          <input id="set-room" type="text" autocapitalize="off" spellcheck="false" placeholder="my-room" />
-        </label>
-        <button id="set-relay-save" class="btn primary block" type="button">保存并重连</button>
-      </section>
-
-      <section class="card">
-        <h2 class="section-title">通知</h2>
-        <label class="switch">
-          <span>新审批时通知</span>
-          <input id="set-notify" type="checkbox" />
-        </label>
-      </section>
-
-      <section class="card">
-        <h2 class="section-title">排查</h2>
-        <p class="muted small">「自动探测」会拿电脑给的地址列表赛跑一遍，选最先回话的那个。</p>
-        <button id="set-probe" class="btn block" type="button">自动探测</button>
-        <button id="set-diag" class="btn ghost block" type="button">导出诊断（仅数字码）</button>
-      </section>
-
-      <section class="card">
-        <button id="set-signout" class="btn danger block" type="button">退出配对</button>
-      </section>
+        <button id="pair-submit" class="btn primary" type="submit" style="height:46px">配对</button>
+        <p id="pair-error" class="error" role="alert" hidden></p>
+        <p class="hint">配对码在电脑上 <code>dsh web</code> 的启动日志里</p>
+      </form>
     </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     兼容层（隐藏）：app.js 是数据/流引擎，它仍按老 id 写 DOM。
+     这些容器不可见，只用来接住它的渲染，可见界面全部由 views.js 产出。
+     迁移完成后这份可以删掉 —— 列在这里是为了「不假装它不存在」。
+     ══════════════════════════════════════════════════════════════════ -->
+<div id="legacy-host" hidden aria-hidden="true">
+  <section id="view-home"></section>
+  <section id="view-list"><div id="list-banner" hidden></div>
+    <ul id="list-cards"></ul><p id="list-empty" hidden></p>
+    <form id="quick-form"><input id="quick-input" /><button id="quick-send" type="submit"></button></form>
+    <span id="list-link"></span><button id="list-refresh" type="button"></button>
+    <button id="list-settings" type="button"></button>
+  </section>
+  <section id="view-detail">
+    <span id="detail-title"></span><span id="detail-sub"></span>
+    <p id="detail-cache-note" hidden></p><p id="detail-live-note" hidden></p>
+    <p id="detail-sync-off" hidden>这台电脑没启用内容同步</p>
+    <ul id="detail-transcript"></ul><p id="detail-transcript-empty" hidden></p>
+    <div id="detail-approvals"></div>
+    <button id="detail-log-toggle" type="button"></button>
+    <p id="detail-activity"></p><ul id="detail-log" hidden></ul>
+    <textarea id="detail-text"></textarea>
+    <button id="detail-queue" type="button"></button>
+    <button id="detail-steer" type="button"></button>
+    <button id="detail-cancel" type="button"></button>
+    <button id="detail-gui" type="button"></button>
+    <button id="detail-upload" type="button"></button>
+    <button id="detail-back" type="button"></button>
+    <input id="detail-file" type="file" hidden />
+  </section>
+  <section id="view-settings">
+    <input id="set-base" /><input id="set-name" /><code id="set-token"></code>
+    <input id="set-relay" /><input id="set-room" /><input id="set-notify" type="checkbox" />
+    <button id="set-save" type="button"></button><button id="set-gui" type="button"></button>
+    <button id="set-relay-save" type="button"></button><button id="set-probe" type="button"></button>
+    <button id="set-diag" type="button"></button><button id="set-signout" type="button"></button>
+    <code id="set-upstream"></code><code id="set-link"></code><code id="set-device"></code>
+    <code id="set-sync"></code><code id="set-version"></code><span id="set-dot"></span>
+  </section>
+  <nav id="tabbar" hidden></nav>
+</div>
+    <ul id="list-cards"></ul><p id="list-empty" hidden></p>
+    <form id="quick-form"><input id="quick-input" /><button id="quick-send" type="submit"></button></form>
+  </section>
+  <section id="view-detail">
+    <span id="detail-title"></span><span id="detail-sub"></span>
+    <p id="detail-cache-note" hidden></p><p id="detail-live-note" hidden></p><p id="detail-sync-off" hidden>这台电脑没启用内容同步</p>
+    <ul id="detail-transcript"></ul><p id="detail-transcript-empty" hidden></p>
+    <div id="detail-approvals"></div>
+    <button id="detail-log-toggle" type="button"></button>
+    <p id="detail-activity"></p><ul id="detail-log" hidden></ul>
+    <textarea id="detail-text"></textarea>
+    <button id="detail-queue" type="button"></button>
+    <button id="detail-steer" type="button"></button>
+    <button id="detail-cancel" type="button"></button>
+    <button id="detail-gui" type="button"></button>
+    <button id="detail-upload" type="button"></button>
+    <input id="detail-file" type="file" hidden />
+  </section>
+  <section id="view-settings">
+    <input id="set-base" /><input id="set-name" /><code id="set-token"></code>
+    <input id="set-relay" /><input id="set-room" /><input id="set-notify" type="checkbox" />
+    <button id="set-save" type="button"></button><button id="set-gui" type="button"></button>
+    <button id="set-relay-save" type="button"></button><button id="set-probe" type="button"></button>
+    <button id="set-diag" type="button"></button><button id="set-signout" type="button"></button>
+    <code id="set-upstream"></code><code id="set-link"></code><code id="set-device"></code>
+    <code id="set-sync"></code><code id="set-version"></code>
+    <span id="set-dot"></span>
+  </section>
+    <span id="list-link"></span><button id="list-refresh" type="button"></button>
+    <button id="list-settings" type="button"></button><button id="detail-back" type="button"></button>
+    <nav id="tabbar" hidden></nav>
   </section>
 </div>
 
-<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-
+<script src="./markdown.js"></script>
+<script src="./views.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>

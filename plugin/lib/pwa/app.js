@@ -12,7 +12,7 @@ const RPC_TIMEOUT_MS = 15000;  // 中继单次请求超时
 const WS_BACKOFF_MAX = 10000;  // 中继重连退避 1s → 10s
 const MAX_EVENTS = 50;         // 详情页原始事件日志上限
 const LINK_TEXT = { live: 'SSE 在线', poll: '轮询降级', down: '断线' };
-const VIEWS = ['connect', 'list', 'detail', 'settings'];
+const VIEWS = ['connect', 'home', 'list', 'tasks', 'detail', 'settings'];
 
 /* 双端同步 / 离线缓存 / 续传：名字与尺寸照任务约定，改成别的对端就认不出了 */
 const IDB_NAME = 'dshpocket';
@@ -496,7 +496,7 @@ function approvalsFor(session) {
 /* ═════════ 渲染 ═════════ */
 function paintStatus() {
   for (const dot of document.querySelectorAll('.dot')) dot.dataset.link = state.link;
-  const host = $('list-host');
+  const host = null; // 旧的 statusbar 已拆成「列表头」，主机名显示在别处
   if (host) host.textContent = hostLabel();
   const link = $('list-link');
   if (link) link.textContent = LINK_TEXT[state.link] || '—';
@@ -532,11 +532,16 @@ function updateCurrentView() {
 
 function showView() {
   if (state.view === 'detail' && !state.sessionId) state.view = 'list';
+  // 没有 token 时任何页面都回到连接屏（否则深链接会把未配对的人丢进设置页）
+  if (!state.token) state.view = 'connect';
   for (const name of VIEWS) {
     const section = $('view-' + name);
     if (section) section.hidden = name !== state.view;
   }
   document.body.dataset.view = state.view;
+  // 连接屏与会话详情是全屏的，底部导航让位
+  const tabbar = $('tabbar');
+  if (tabbar) tabbar.hidden = state.view === 'connect' || state.view === 'detail';
   const inDetail = state.view === 'detail' && Boolean(state.sessionId);
   if (inDetail && state.msgSession !== state.sessionId) void loadTranscript(state.sessionId);
   refreshStreamSession(inDetail ? state.sessionId : null);
@@ -550,7 +555,7 @@ function hashFor(view) {
 function navigate(view, options) {
   const opts = options || {};
   if (opts.sessionId !== undefined) state.sessionId = opts.sessionId;
-  state.view = VIEWS.indexOf(view) >= 0 ? view : 'list';
+  state.view = VIEWS.indexOf(view) >= 0 ? view : (state.token ? 'home' : 'connect');
   const hash = hashFor(state.view);
   try {
     if (opts.replace) history.replaceState(null, '', hash);
@@ -738,6 +743,27 @@ function updateSettings() {
   if (room) room.value = state.room;
   const notify = $('set-notify');
   if (notify) notify.checked = state.notify;
+
+  // Runtime 卡：把快照里能确证的事实摆出来（上游端口、连接方式、设备、同步能力）
+  const upstream = $('set-upstream');
+  if (upstream) {
+    upstream.textContent = state.snapshot && state.snapshot.upstreamPort
+      ? '本机代理 · ' + state.snapshot.upstreamPort
+      : (state.base ? state.base.host : '—');
+  }
+  const link = $('set-link');
+  if (link) {
+    link.textContent = state.link === 'live' ? 'SSE 实时' : state.link === 'poll' ? '轮询降级' : '断开';
+  }
+  const device = $('set-device');
+  if (device) device.textContent = state.deviceName || guessDeviceName();
+  const sync = $('set-sync');
+  if (sync) {
+    const cap = state.snapshot && state.snapshot.capabilities;
+    sync.textContent = cap ? (cap.sync ? '内容同步已启用' : '仅快照（无内容同步）') : '—';
+  }
+  const ver = $('set-version');
+  if (ver) ver.textContent = 'DSH Mobile · ' + (state.version || '0.4.x');
   paintStatus();
 }
 
@@ -886,6 +912,16 @@ async function loadTranscript(sessionId) {
   renderTranscript();
 }
 
+/* markdown.js 提供 bubbleContent（富文本气泡）；万一没加载到（旧缓存、或插件进程还是旧的），
+   退化成纯文本，绝不让整屏白掉。 */
+function bubbleFor(message) {
+  try {
+    if (typeof bubbleContent === "function") return bubbleContent(message);
+  } catch (err) {
+    /* 渲染器抛错也要能显示原文 */
+  }
+  return el("div", { class: "bubble", text: message.text });
+}
 /* ── 转录渲染 ── */
 function messageRow(message) {
   const time = el('span', { class: 'msg-time', text: relTime(message.at) });
@@ -906,17 +942,18 @@ function messageRow(message) {
     meta.append(el('button', { class: 'btn small', type: 'button', text: '重发', onclick: () => retryLocal(message) }));
   }
   return el('li', { class: classes.join(' ') },
-    el('div', { class: 'bubble', text: message.text }),
+    bubbleFor(message),
     meta);
 }
 
 function draftRow(text) {
   return el('li', { class: 'msg assistant draft' },
-    el('div', { class: 'bubble', text: text }),
+    bubbleFor({ role: 'assistant', text: text }),
     el('div', { class: 'msg-meta' }, el('span', { class: 'msg-state', text: '正在输出…' })));
 }
 
 function renderTranscript() {
+  if (window.__dshRender) window.__dshRender();
   const list = $('detail-transcript');
   if (!list) return;
   clear(list);
@@ -1553,7 +1590,6 @@ function bindEvents() {
   on('detail-text', 'keydown', (event) => {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); sendPrompt('queue'); }
   });
-  on('set-back', 'click', () => navigate(state.token ? 'list' : 'connect'));
   on('set-save', 'click', saveSettings);
   on('set-relay-save', 'click', saveRelay);
   on('set-notify', 'change', onNotifyToggle);
@@ -1592,12 +1628,13 @@ function boot() {
   loadConfig();
   installGlobalErrors();
   bindEvents();
+  // views.js 自己接管渲染与事件；这里不重复接线
   registerServiceWorker();
   // 扫来的配对码优先：`#code=123456` / `?code=123456` 直接进连接屏并聚焦
   const hasCode = prefillPairCode();
   if (hasCode) navigate('connect', { replace: true });
   else if (location.hash) syncFromHash();
-  else navigate(state.token ? 'list' : 'connect', { replace: true });
+  else navigate(state.token ? 'home' : 'connect', { replace: true });
   if (!state.token) { updateConnect(); return; }
   setAuthCookie(state.token);
   startStream();

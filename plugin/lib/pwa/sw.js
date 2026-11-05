@@ -5,8 +5,8 @@
  * 在 http:// 的局域网地址下浏览器拒绝注册 SW，注册失败由上层的 .catch 静默吞掉。
  */
 
-const CACHE = 'dshpocket-shell-v1';
-const SHELL = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest'];
+const CACHE = 'dshpocket-shell-v3';
+const SHELL = ['./', './index.html', './app.js', './markdown.js', './views.js', './style.css', './manifest.webmanifest'];
 
 /** 业务接口（鉴权、快照、SSE、配对、健康检查、中继）一律绕过缓存。 */
 function bypass(url) {
