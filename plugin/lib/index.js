@@ -104,9 +104,11 @@ export function apply(ctx, rawConfig = {}) {
   if (process.env.DSH_POCKET_DISABLE === '1') return;
 
   const config = readConfig(rawConfig);
+  // 日志走 stderr：stdout 留给调用方（`node --test` 会把 stdout 当 TAP 流解析，
+  // 混进普通日志会让 runner 报 "Unable to deserialize cloned data"）。
   const info = (msg) => {
     try {
-      console.log(msg);
+      console.error(msg);
     } catch {
       /* 日志失败不影响服务 */
     }
