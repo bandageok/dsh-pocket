@@ -1,4 +1,4 @@
-# 产出 libtailscale.aar（内置 Tailscale 的唯一前置件）
+﻿# 产出 libtailscale.aar（内置 Tailscale 的唯一前置件）
 #
 # 为什么需要它：Tailscale 的客户端引擎是 Go 写的，Android 这边要能用，必须用
 # `gomobile bind` 把它编译成 AAR（含 libgojni.so + 配套的 Java 绑定类）。

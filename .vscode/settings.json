@@ -1,0 +1,19 @@
+{
+  "files.encoding": "utf8",
+  "files.eol": "\n",
+  "search.exclude": {
+    "**/android/app/build": true,
+    "**/android/.gradle": true,
+    "**/android/engines": true,
+    "**/dist": true,
+    "**/shots": true,
+    "**/node_modules": true
+  },
+  "files.watcherExclude": {
+    "**/android/app/build/**": true,
+    "**/android/.gradle/**": true,
+    "**/android/engines/**": true
+  },
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "kotlin.languageServer.enabled": true
+}
