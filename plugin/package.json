@@ -1,6 +1,6 @@
 {
   "name": "dsh-pocket",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "把 dsh web 装进口袋：手机端 PWA + LAN 反代 + 可选中继，实时看会话、发指令、停任务。",
   "type": "module",
   "main": "./lib/index.js",

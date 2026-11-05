@@ -231,7 +231,7 @@ test('health 带地址清单、回环状态、上传状态，手机可据此「�
     assert.deepEqual(body.loop, { enabled: true, any: false, ports: [9230] });
     assert.equal(typeof body.upload.maxFile, 'number');
     assert.equal(body.diag, 0);
-    assert.equal(body.version, '0.2.0');
+    assert.equal(body.version, '0.2.1');
   } finally {
     await env.close();
   }

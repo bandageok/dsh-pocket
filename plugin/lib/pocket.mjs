@@ -322,7 +322,7 @@ export function createPocket(options) {
       json(res, 200, {
         ok: true,
         name: 'dsh-pocket',
-        version: '0.2.0',
+        version: '0.2.1',
         uptimeMs: Date.now() - startedAt,
         paired: store.paired,
         upstream: { port: upstream.port, ready, failures: upstream.failures ?? 0 },
