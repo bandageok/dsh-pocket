@@ -144,3 +144,58 @@ window.__dshConnectionState / __dshToggleSidebar / __dshAutoSidebar / __dshFishS
 1. 装 0.2.1 的 APK，点一次「测试」，把那行文字发我 —— 它直接说明卡在超时还是拒绝连接。
 2. 如果你要我补上「内置 Tailscale」：给我一台能连 adb 的机器（或你跑 `adb logcat -s DshPocket` 的结果），
    我按 `libtailscale` 的真实签名把粘合层写完，一轮就能对通。
+
+## 补一刀：它的**发布包其实缺了 Java 绑定类**
+
+这一条比上面的架构更关键，直接决定「照抄」能不能抄到：
+
+```
+$ apkanalyzer dex packages --defined-only DSHgo-v1.3.apk | wc -l   → 165 个 class_def
+$ （同样统计 v1.2）                                                 → 162 个 class_def
+$ 逐个看包名                                                        → 全部 com.dsh.remote.*
+```
+
+- `libtailscale.Libtailscale` / `LibApp` / `go.Seq` 这些**只作为类型引用**出现在字符串池里
+  （`Llibtailscale/App;`、`Lgo/Seq;`…），**没有任何一个被定义**。
+- 我也查了 `.so` 里有没有内嵌 dex：没有（`dex
+035` 魔数不存在；匹配到的 `PK` 是 Go 的数据段）。
+- 也就是说它发布出来的 70 MB `libgojni.so` 在**这份 APK 里是孤立**的：
+  一旦走到 `Tunnel.ensureEngine()` → `libtailscale.Libtailscale.start(...)`，
+  就是 `NoClassDefFoundError`。
+
+结论：**「抄它的 APK」抄不到隧道这一层** —— 它的 Java 粘合层在自己的构建里丢了
+（`libtailscale.aar` 很可能被当成 `compileOnly`，或者打包时把 AAR 的 classes.jar 排除掉了）。
+要复现这套做法，只有一条路：**用它同一份源码（tailscale-android 的 `libtailscale` 包）
+自己 `gomobile bind` 出一个 AAR**，这样 Java 绑定和 `.so` 天生配套。
+
+### 我已经把这条路铺到「只差一个网络条件」
+
+本机已完成：
+
+| 步骤 | 状态 |
+|---|---|
+| Go 1.22.6 | ✅ 已装（dl.google.com） |
+| Android NDK 26.1.10909125 | ✅ 已装（sdkmanager） |
+| `git clone tailscale/tailscale-android` | ✅ 可达 |
+| `gomobile bind` | ⛔ 卡在 Go module proxy：`goproxy.cn` / `goproxy.io` / `proxy.golang.org` / 阿里云 / 腾讯云 goproxy 在这条网络上**全部不可达**（000），而 tailscale 有一百多个依赖 |
+
+一条命令的事，在有 proxy 的机器上跑：
+
+```powershell
+pwsh scripts/build-libtailscale.ps1 -Goproxy https://goproxy.cn
+# 产物 android/app/libs/libtailscale.aar，之后 ./gradlew assembleDebug 就会带上
+```
+
+### 需要照抄的接口（从它的源码 + JNI 符号一一对上）
+
+| 它实现的 | 作用 | 我们必须实现 |
+|---|---|---|
+| `libtailscale.IPNService` | `id()` / `protect(fd)` / `newBuilder()` / `close()` / `disconnectVPN()` / `updateVpnStatus(bool)` | VpnService 侧 |
+| `libtailscale.VPNServiceBuilder` | `setMTU` / `addDNSServer` / `addSearchDomain` / `addRoute` / `excludeRoute` / `addAddress` / `establish()` | 把 Go 侧要的配置落到 `VpnService.Builder` |
+| `libtailscale.AppContext` | `getDeviceName` / `encryptToPref` / `decryptFromPref` / `bindSocketToNetwork` | Keystore 加密的登录态存储 |
+| `libtailscale.Application` | `callLocalAPI(...)` / `watchNotifications(...)` | 登录、状态、peer 发现全走它 |
+| `Libtailscale.start(dataDir, "", false, appContext)` | 启动引擎 | 一行 |
+| `Libtailscale.requestVPN(service)` | 告诉引擎 VPN 已就绪 | 一行 |
+
+清单里还有一条值得直接抄：`foregroundServiceType="systemExempted"` +
+`FOREGROUND_SERVICE_SYSTEM_EXEMPTED` —— 否则 Android 14 会把长跑的前台服务掐掉。
