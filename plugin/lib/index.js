@@ -8,7 +8,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { isTailscale, lanAddresses } from './proxy.mjs';
+import { isCgnatAddress, lanAddresses } from './proxy.mjs';
 import { createStack, listenWithRetry } from './stack.mjs';
 import { createStore } from './store.mjs';
 
@@ -157,13 +157,13 @@ export function apply(ctx, rawConfig = {}) {
   function announce(port) {
     const addresses = lanAddresses();
     const urls = addresses.map((it) => `http://${it.address}:${port}/__pocket__/`);
-    const tailscale = addresses.filter((it) => isTailscale(it.address)).map((it) => `http://${it.address}:${port}/__pocket__/`);
+    const cgnat = addresses.filter((it) => isCgnatAddress(it.address)).map((it) => `http://${it.address}:${port}/__pocket__/`);
     const line = (text) => info(`│ ${text}`);
     info('');
     info('┌─ dsh-pocket ────────────────────────────────────────────────');
     line(`手机端：${urls[0] ?? `http://<本机IP>:${port}/__pocket__/`}`);
     for (const url of urls.slice(1)) line(`        ${url}`);
-    if (tailscale.length > 0) line(`隧道：${tailscale[0]}（Tailscale 地址，不在同一 WiFi 时用）`);
+    if (cgnat.length > 0) line(`备用地址：${cgnat[0]}（100.64/10 网段，通常来自组网工具）`);
     if (config.relayUrl) line(`中继：${config.relayUrl}  房间 ${config.relayRoom || '(未设置)'}`);
     line(`配对码：${store.code}   ·  ${pocket.approvalAnswer ? '手机可批准审批' : '审批仅展示'}`);
     if (loop.status().enabled) {

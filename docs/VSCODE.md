@@ -1,7 +1,7 @@
 # 在 VS Code 里测试
 
 前提：这些都已经在这台机器上装好了 —— JDK 17（`D:\Java`）、Android SDK（`C:\Android\sdk`，
-含 `platform-tools` / `emulator` / `android-34` / `x86_64` 系统镜像 / NDK 26.1）、Go 1.22 + gomobile。
+含 `platform-tools` / `emulator` / `android-34` / `x86_64` 系统镜像）。
 
 ## 一、打开项目
 
@@ -50,7 +50,7 @@ Run Task → **⑧ 后端测试**：插件 52 条 + 手机端自检 72 项 + 中
    adb install -r android/app/build/outputs/apk/debug/app-debug.apk
    ```
    （任务 ⑤ 里写死了 `-s emulator-5554`，真机就把 `-s` 去掉或换成设备序列号）
-4. Run Task → **⑥ 看引擎日志**：`DshPocket` 是我们自己的日志，`Tailscale/gojni` 是引擎的
+4. 看日志：`adb -s <序列号> logcat -s DshPocket`
 
 ## 五、两个 VS Code 相关的小坑
 

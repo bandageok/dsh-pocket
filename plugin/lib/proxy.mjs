@@ -148,7 +148,7 @@ export function lanAddresses() {
 }
 
 /** Tailscale 从 100.64.0.0/10 发地址：第二个八位组 64–127。 */
-export function isTailscale(address) {
+export function isCgnatAddress(address) {
   const m = /^100\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(String(address ?? ''));
   if (!m) return false;
   const second = Number(m[1]);

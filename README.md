@@ -19,7 +19,7 @@
 | 形态 | 装什么 | 谁适合 |
 |---|---|---|
 | **PWA**（默认） | 什么都不用装：浏览器打开插件给的地址，「添加到主屏幕」 | 只想先用起来；iOS/Android 通用 |
-| **原生 App**（Android） | [Releases](https://github.com/bandageok/dsh-pocket/releases/latest) 里的 `dsh-pocket-0.3.0-debug.apk`（28.7 MB，**内含 Tailscale 引擎**） | 要**不在同一局域网也能连**、要后台收「待审批 / 跑完了」通知 |
+| **原生 App**（Android） | [Releases](https://github.com/bandageok/dsh-pocket/releases/latest) 里的 `dsh-pocket-0.4.0-debug.apk`（**3.3 MB**） | 要后台收「待审批 / 跑完了」通知 |
 
 两者的界面是同一套 —— 原生壳不重画界面，只补 PWA 做不到的三件事：内置隧道、系统通知、常驻事件流。
 详见 [android/README.md](android/README.md)。
@@ -47,7 +47,7 @@ dsh plugin --profile web add /path/to/dsh-pocket/plugin
 
 **③ 输入 6 位配对码** → 进主界面。配一次，之后打开就是会话列表。
 
-> 手机端地址也可以手工填：PWA 在任意位置打开后都能改「桌面地址」，所以你可以先在家里开一次，出门后换成 Tailscale 地址或中继。
+> 手机端地址也可以手工填：PWA 在任意位置打开后都能改「桌面地址」，出门时换成 `scripts/outside-tunnel.ps1` 打印的公网地址即可。
 
 ## 出门在外
 
@@ -69,7 +69,7 @@ node relay/server.mjs          # 默认 :8787，PORT 可改
 
 手机端在「设置 → 中继」里填同样的 `wss://…` 与房间号，保存即切到 WS 传输（中继没有 SSE，状态改为 3 秒轮询，状态条会变黄）。
 
-不想用中继也行：装 Tailscale，插件会把 `100.64/10` 的地址直接打到启动日志里（`隧道：http://100.x.y.z:3081/__pocket__/`），手机连同一个 Tailnet 即可。
+不想用中继也行：在电脑上跑 `scripts/outside-tunnel.ps1`，它会把插件发布成公网 HTTPS 地址（`https://xxx.trycloudflare.com/__pocket__/`），手机在任意网络都能连。
 
 ## 双端同步（记录与内容）
 
@@ -103,8 +103,7 @@ node relay/server.mjs          # 默认 :8787，PORT 可改
 7. **打开完整界面** —— 一键跳到电脑端官方 UI（同一个反代，令牌自动换成 cookie）。
 8. **排障** —— 设置里一键导出诊断（只有事件码与数字，可安全贴到 issue）。
 
-装上原生 APK 之后还多两条：**内置 Tailscale**（只让本 App 走隧道，其他应用不受影响，需要一份 `libtailscale.aar`，
-见 [android/README.md](android/README.md)）与**后台通知**（待审批、会话跑完，标签页被冻结也照推）。
+装上原生 APK 之后还多两条：**后台通知**（待审批、会话跑完，标签页被冻结也照推）与**记住地址**（下次打开直接进）。
 
 ## 实测到什么程度
 
@@ -158,7 +157,7 @@ dsh-pocket/
 │   │   ├── probe-follow.mjs # 真机探针：验同步链路、打印上游帧形状
 │   │   └── pwa-smoke.mjs  # 手机端自检：Node + 最小 DOM 真跑 app.js（72 项）
 │   └── test/
-├── android/             # 原生壳（Kotlin）：WebView + 内置 Tailscale + 通知服务
+├── android/             # 原生壳（Kotlin）：WebView + 通知服务（3.3 MB，无原生库）
 ├── dist/                # 编好的 debug APK
 ├── relay/server.mjs     # 中继（自己实现 RFC6455 最小子集，零依赖）
 └── docs/                # PROTOCOL / ARCHITECTURE / SECURITY / TROUBLESHOOTING

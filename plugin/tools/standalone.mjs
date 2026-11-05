@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { readConfig } from '../lib/index.js';
-import { isTailscale, lanAddresses } from '../lib/proxy.mjs';
+import { isCgnatAddress, lanAddresses } from '../lib/proxy.mjs';
 import { createStack, listenWithRetry } from '../lib/stack.mjs';
 import { createStore } from '../lib/store.mjs';
 
@@ -71,14 +71,14 @@ const port = await listenWithRetry(stack.server, config.port, config.bind, 10, (
 stack.setPort(port);
 stack.startRelay(port); // 与插件里同一条拨号路径
 const urls = lanAddresses().map((it) => `http://${it.address}:${port}/__pocket__/`);
-const ts = lanAddresses().filter((it) => isTailscale(it.address)).map((it) => `http://${it.address}:${port}/__pocket__/`);
+const cgnat = lanAddresses().filter((it) => isCgnatAddress(it.address)).map((it) => `http://${it.address}:${port}/__pocket__/`);
 
 console.log('');
 console.log('dsh-pocket (standalone)');
 console.log(`  上游      : 127.0.0.1:${dshPort}  (token ${token.slice(0, 8)}…)`);
 console.log(`  手机端    : ${urls[0] ?? `http://127.0.0.1:${port}/__pocket__/`}`);
 for (const url of urls.slice(1)) console.log(`              ${url}`);
-if (ts.length > 0) console.log(`  隧道      : ${ts[0]}`);
+if (cgnat.length > 0) console.log(`  备用地址  : ${cgnat[0]}`);
 console.log(`  配对码    : ${store.code}`);
 console.log(`  状态文件  : ${store.file}`);
 console.log('');

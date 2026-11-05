@@ -20,7 +20,6 @@ android/app/build/
 android/.idea/
 android/*.jks
 android/*.keystore
-# android/app/libs/libtailscale.aar 要入库：CI 与用户构建都需要它（生成方式见 THIRD-PARTY.md）
 dist/*.apk
 android/engines/
 shots/
