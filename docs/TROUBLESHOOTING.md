@@ -163,3 +163,31 @@ dsh --profile web --no-open 2>&1 | tee /tmp/dsh-web.log
 - 插件监听 `0.0.0.0:3081`，天然覆盖 tailnet 网卡，不用改配置；
 - 本机防火墙三个 profile 都是关闭的，所以不用额外放行；
 - 手机端「启动隧道」→ 自动扫在线 peer 的 3081 → 找到电脑 → 直接打开。
+
+## 电脑端 tailscaled 起不来（Windows，实机踩过）
+
+症状：托盘「Log in」点了没反应；`tailscale status` 无输出；命名管道里没有 tailscale。
+
+证据（`tailscaled --windows-mode=dev` 手动跑出来的）：
+
+```
+winhttp: Open: The parameter is incorrect.
+tshttpproxy: winhttp: GetProxyForURL("https://controlplane.tailscale.com/"): ERROR_INVALID_PARAMETER
+creating dns cleanup: Invalid class string
+```
+
+诊断要点：**服务在跑 ≠ 后端在跑**。`Get-Service Tailscale` 显示 Running 也可能永远没有
+`\.\pipe\ProtectedPrefix\Administrators\Tailscale	ailscaled`，这时任何 CLI 命令都连不上，
+GUI 的 Log in 也没有反应。
+
+一键修：`pwsh scripts/fix-tailscale.ps1`（自带提权：重启服务 → 等管道 → 取授权链接 →
+开浏览器 → 登录后打印 100.x 与插件连通性）。仍不行就重启一次机器，再跑该脚本。
+
+## 手机端点「Sign in with Google」没反应
+
+Google 明确禁止在 WebView 里做 OAuth（`disallowed_useragent`）。所以 App 的登录页
+**必须交给系统浏览器**；小米自带浏览器也可能拦第三方登录，装 Chrome 后在 Chrome 里打开
+授权链接即可。
+
+另外：不要反复调 `login-interactive` —— 每次调用都会**重新生成 node key**，
+旧链接立刻失效，页面会报 `Error 400 — missing machine key`。App 里已改成只踢一次。

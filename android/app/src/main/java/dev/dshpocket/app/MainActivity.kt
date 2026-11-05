@@ -235,6 +235,12 @@ class MainActivity : AppCompatActivity() {
 
     private val main = Handler(Looper.getMainLooper())
 
+    /** 已经给用户看过的授权链接：同一条不重复加载（重复加载 = 每次重新生成 node key）。 */
+    private var loginShownUrl: String? = null
+
+    /** 自动弹登录页只弹一次，之后由用户点「登录 TAILSCALE」。 */
+    private var loginAutoShown = false
+
     /**
      * 一键隧道：引擎 → VPN 授权 → 后台建连 → 在 tailnet 里找电脑 → 打开它。
      *
@@ -284,7 +290,11 @@ class MainActivity : AppCompatActivity() {
                 status.text = "隧道：" + (if (state.isEmpty()) "启动中" else state)
                 when {
                     state == "Running" -> discoverAndLoad()
-                    needLogin && tries > 2 -> openLogin()
+                    needLogin && tries > 2 && !loginAutoShown -> {
+                        loginAutoShown = true
+                        openLogin()
+                    }
+                    
                     tries < 25 -> main.postDelayed({ pollTunnel(tries + 1) }, 1200)
                     else -> status.text = "隧道没能起来（" + (if (state.isEmpty()) "无响应" else state) + "）"
                 }
@@ -292,7 +302,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 交互式登录：把授权页放到 WebView 里，登录完系统会回到 App。 */
+    /**
+     * 登录期间的后台守望：每 2 秒问一次后端状态，一旦 Running 就自动发现并打开 DSH。
+     * 用户此时在浏览器里操作，App 可能已经不在前台，所以这里不依赖界面回调。
+     */
+    private fun watchLogin(tries: Int) {
+        if (tries > 150) return // 5 分钟
+        io.execute {
+            val state = Tailnet.backendState()
+            if (state == "Running") {
+                runOnUiThread {
+                    status.visibility = View.VISIBLE
+                    status.text = "已登录，正在找电脑…"
+                    discoverAndLoad()
+                }
+                return@execute
+            }
+            main.postDelayed({ watchLogin(tries + 1) }, 2000)
+        }
+    }
+
+    /** 交互式登录：把授权页交给系统浏览器，登录完引擎会自己转 Running。 */
     private fun openLogin() {
         io.execute {
             status.post { status.visibility = View.VISIBLE; status.text = "正在取登录地址…" }
@@ -301,10 +331,21 @@ class MainActivity : AppCompatActivity() {
                 if (url.isEmpty()) {
                     status.visibility = View.VISIBLE
                     status.text = "拿不到登录地址：先点「启动隧道」，或看 logcat"
-                } else {
+                } else if (url != loginShownUrl) {
+                    // **必须交给系统浏览器**：Google/Microsoft 明确禁止 WebView 内做 OAuth
+                    // （disallowed_useragent），在 WebView 里点「Sign in with Google」是死的。
+                    // 登录成功后控制面会把这个节点的 node key 标成已授权，引擎自己会转 Running，
+                    // 不需要回调 —— 所以用浏览器登录完全可行。
+                    loginShownUrl = url
                     status.visibility = View.VISIBLE
-                    status.text = "在下面登录 Tailscale，完成后回到这里点「连接」"
-                    web.loadUrl(url)
+                    status.text = "已在浏览器打开 Tailscale 登录页，登录完成后 App 会自动连上"
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    } catch (err: Throwable) {
+                        status.text = "打不开浏览器：" + (err.message ?: err.javaClass.simpleName)
+                    }
+                    // 浏览器在后台完成登录，这里持续盯着状态
+                    watchLogin(0)
                 }
             }
         }

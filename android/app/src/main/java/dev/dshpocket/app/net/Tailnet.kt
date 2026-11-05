@@ -188,20 +188,21 @@ object Tailnet {
      * 生成授权链接。所以要**轮询**：先读通知（`BrowseToURL`），再读 status 的 `AuthURL`，
      * 期间每隔几秒再踢一次 `login-interactive`。参考实现也是这么兜的，只是它把状态摊在 UI 上。
      */
-    fun awaitAuthUrl(timeoutMs: Long = 25000): String {
+    fun awaitAuthUrl(timeoutMs: Long = 30000): String {
+        // 只能踢一次 login-interactive：每一次调用都会**重新生成 node key**，
+        // 之前那条授权链接随即失效（页面上表现为 Error 400 — missing machine key）。
+        var kicked = false
         val deadline = System.currentTimeMillis() + timeoutMs
-        var lastKick = 0L
         while (System.currentTimeMillis() < deadline) {
             extractUrl(lastNotify).takeIf { it.startsWith("http") }?.let { return it }
-            statusAt = 0 // 强制下一次 status() 真的去拉
+            statusAt = 0 // 强制刷新 status
             status().optString("AuthURL", "").takeIf { it.startsWith("http") }?.let { return it }
             browseUrl.takeIf { it.startsWith("http") }?.let { return it }
-            val now = System.currentTimeMillis()
-            if (now - lastKick > 4000) {
-                lastKick = now
+            if (!kicked) {
                 runCatching { call("POST", "login-interactive", "") }
+                kicked = true
             }
-            Thread.sleep(700)
+            Thread.sleep(500)
         }
         return ""
     }
